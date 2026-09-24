@@ -20,6 +20,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2 } from "@opencode-ai/core/event"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
+import { LabelTable } from "@opencode-ai/core/label/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionTable } from "@opencode-ai/core/session/sql"
@@ -94,6 +95,35 @@ describe("DatabaseMigration", () => {
           { name: "session_message_session_seq_idx" },
           { name: "session_message_session_time_created_id_idx" },
           { name: "session_message_session_type_seq_idx" },
+        ])
+      }),
+    )
+  })
+
+  test("stores labels with parent-child relationships", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_root", name: "Coursework", parent_id: null, time_created: 1, time_updated: 1 },
+            { id: "label_child", name: "Databases", parent_id: "label_root", time_created: 2, time_updated: 2 },
+          ])
+          .run()
+
+        expect(
+          yield* db
+            .select({ id: LabelTable.id, name: LabelTable.name, parent_id: LabelTable.parent_id })
+            .from(LabelTable)
+            .orderBy(LabelTable.id)
+            .all(),
+        ).toEqual([
+          { id: "label_child", name: "Databases", parent_id: "label_root" },
+          { id: "label_root", name: "Coursework", parent_id: null },
         ])
       }),
     )
