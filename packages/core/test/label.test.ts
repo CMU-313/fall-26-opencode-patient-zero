@@ -4,11 +4,46 @@ import { Database } from "@opencode-ai/core/database/database"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Label } from "@opencode-ai/core/label"
+import { ProjectV2 } from "@opencode-ai/core/project"
+import { ProjectTable } from "@opencode-ai/core/project/sql"
+import { AbsolutePath } from "@opencode-ai/core/schema"
+import { SessionSchema } from "@opencode-ai/core/session/schema"
+import { SessionTable } from "@opencode-ai/core/session/sql"
 import { testEffect } from "./lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Label.node])))
 
 const missing = Label.ID.make("lbl_missing")
+
+/** Inserts a project and sessions with the given IDs so labels can be assigned to them. */
+const createSessions = (...ids: string[]) =>
+  Effect.gen(function* () {
+    const { db } = yield* Database.Service
+    const projectID = ProjectV2.ID.make("prj_labels")
+    yield* db
+      .insert(ProjectTable)
+      .values({ id: projectID, worktree: AbsolutePath.make("/repo"), sandboxes: [], time_created: 1, time_updated: 1 })
+      .onConflictDoNothing()
+      .run()
+      .pipe(Effect.orDie)
+    yield* db
+      .insert(SessionTable)
+      .values(
+        ids.map((id) => ({
+          id: SessionSchema.ID.make(id),
+          project_id: projectID,
+          slug: id,
+          directory: "/repo",
+          title: id,
+          version: "test",
+          time_created: 1,
+          time_updated: 1,
+        })),
+      )
+      .run()
+      .pipe(Effect.orDie)
+    return ids.map((id) => SessionSchema.ID.make(id))
+  })
 
 /** Runs an effect that is expected to fail and returns the error's tag. */
 const failureTag = <A, E extends { _tag: string }>(effect: Effect.Effect<A, E>) =>
@@ -262,6 +297,80 @@ describe("Label", () => {
         expect(yield* labels.resolvePath("Missing")).toEqual([])
         expect(yield* labels.resolvePath("Missing/Coursework")).toEqual([])
         expect(yield* labels.resolvePath(" / ")).toEqual([])
+      }),
+    )
+  })
+
+  describe("session assignment", () => {
+    it.effect("assigns labels to a session and lists them by name", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session, other] = yield* createSessions("ses_one", "ses_two")
+        const work = yield* labels.create({ name: "Work" })
+        const bugs = yield* labels.create({ name: "Bugs" })
+
+        yield* labels.assign({ sessionID: session, labelID: work.id })
+        yield* labels.assign({ sessionID: session, labelID: bugs.id })
+
+        expect(yield* labels.forSession(session)).toEqual([bugs, work])
+        expect(yield* labels.forSession(other)).toEqual([])
+      }),
+    )
+
+    it.effect("ignores assigning the same label twice", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session] = yield* createSessions("ses_one")
+        const work = yield* labels.create({ name: "Work" })
+
+        yield* labels.assign({ sessionID: session, labelID: work.id })
+        yield* labels.assign({ sessionID: session, labelID: work.id })
+
+        expect(yield* labels.forSession(session)).toEqual([work])
+      }),
+    )
+
+    it.effect("unassigns a label and ignores labels the session does not have", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session] = yield* createSessions("ses_one")
+        const work = yield* labels.create({ name: "Work" })
+        const bugs = yield* labels.create({ name: "Bugs" })
+        yield* labels.assign({ sessionID: session, labelID: work.id })
+
+        yield* labels.unassign({ sessionID: session, labelID: bugs.id })
+        yield* labels.unassign({ sessionID: session, labelID: work.id })
+
+        expect(yield* labels.forSession(session)).toEqual([])
+      }),
+    )
+
+    it.effect("rejects a label or session that does not exist", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session] = yield* createSessions("ses_one")
+        const work = yield* labels.create({ name: "Work" })
+
+        expect(yield* failureTag(labels.assign({ sessionID: session, labelID: missing }))).toBe("Label.NotFoundError")
+        expect(
+          yield* failureTag(labels.assign({ sessionID: SessionSchema.ID.make("ses_missing"), labelID: work.id })),
+        ).toBe("Label.SessionNotFoundError")
+      }),
+    )
+
+    it.effect("drops assignments when a label or one of its ancestors is deleted", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session] = yield* createSessions("ses_one")
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+        const keep = yield* labels.create({ name: "Keep" })
+        yield* labels.assign({ sessionID: session, labelID: databases.id })
+        yield* labels.assign({ sessionID: session, labelID: keep.id })
+
+        yield* labels.remove(coursework.id)
+
+        expect(yield* labels.forSession(session)).toEqual([keep])
       }),
     )
   })
