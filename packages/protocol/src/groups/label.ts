@@ -1,9 +1,13 @@
 import { Label } from "@opencode-ai/schema/label"
+import { Session } from "@opencode-ai/schema/session"
 import { Schema } from "effect"
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
-import { ConflictError, InvalidRequestError, LabelNotFoundError } from "../errors"
+import { ConflictError, InvalidRequestError, LabelNotFoundError, SessionNotFoundError } from "../errors"
 
 const Response = Schema.Struct({ data: Label.Info }).annotate({ identifier: "LabelResponse" })
+const SessionLabelsResponse = Schema.Struct({ data: Schema.Array(Label.Info) }).annotate({
+  identifier: "SessionLabelsResponse",
+})
 
 // Query strings cannot carry `null`, so "root" stands in for `Label.ListInput`'s top-level filter.
 export const LabelsQuery = Schema.Struct({
@@ -76,6 +80,45 @@ export const LabelGroup = HttpApiGroup.make("server.label")
         identifier: "v2.label.remove",
         summary: "Remove label",
         description: "Delete a label and every label nested beneath it. Returns the IDs of all deleted labels.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.get("session.label.list", "/api/session/:sessionID/label", {
+      params: { sessionID: Session.ID },
+      success: SessionLabelsResponse,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.session.label.list",
+        summary: "List session labels",
+        description: "Retrieve the labels assigned to a session, sorted by name.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.put("session.label.assign", "/api/session/:sessionID/label/:labelID", {
+      params: { sessionID: Session.ID, labelID: Label.ID },
+      success: SessionLabelsResponse,
+      error: [LabelNotFoundError, SessionNotFoundError],
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.session.label.assign",
+        summary: "Assign session label",
+        description:
+          "Assign a label to a session. Assigning a label the session already has is a no-op. Returns the session's labels.",
+      }),
+    ),
+  )
+  .add(
+    HttpApiEndpoint.delete("session.label.unassign", "/api/session/:sessionID/label/:labelID", {
+      params: { sessionID: Session.ID, labelID: Label.ID },
+      success: SessionLabelsResponse,
+    }).annotateMerge(
+      OpenApi.annotations({
+        identifier: "v2.session.label.unassign",
+        summary: "Unassign session label",
+        description:
+          "Remove a label from a session. Removing a label the session does not have is a no-op. Returns the session's labels.",
       }),
     ),
   )
