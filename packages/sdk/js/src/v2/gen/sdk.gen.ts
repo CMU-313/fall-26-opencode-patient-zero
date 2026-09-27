@@ -3374,6 +3374,7 @@ export class Session2 extends HeyApiClient {
       roots?: boolean | "true" | "false"
       start?: number
       search?: string
+      label?: string
       limit?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -3390,6 +3391,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "roots" },
             { in: "query", key: "start" },
             { in: "query", key: "search" },
+            { in: "query", key: "label" },
             { in: "query", key: "limit" },
           ],
         },
