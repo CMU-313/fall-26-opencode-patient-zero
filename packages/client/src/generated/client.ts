@@ -112,6 +112,22 @@ import type {
   ProjectCopiesRemoveOutput,
   ProjectCopiesRefreshInput,
   ProjectCopiesRefreshOutput,
+  ServerLabelListInput,
+  ServerLabelListOutput,
+  ServerLabelGetInput,
+  ServerLabelGetOutput,
+  ServerLabelCreateInput,
+  ServerLabelCreateOutput,
+  ServerLabelUpdateInput,
+  ServerLabelUpdateOutput,
+  ServerLabelRemoveInput,
+  ServerLabelRemoveOutput,
+  ServerLabelListForSessionInput,
+  ServerLabelListForSessionOutput,
+  ServerLabelAssignInput,
+  ServerLabelAssignOutput,
+  ServerLabelUnassignInput,
+  ServerLabelUnassignOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -986,6 +1002,99 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+    },
+    "server.label": {
+      list: (input?: ServerLabelListInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelListOutput }>(
+          {
+            method: "GET",
+            path: `/api/label`,
+            query: { parentID: input?.["parentID"] },
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      get: (input: ServerLabelGetInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelGetOutput }>(
+          {
+            method: "GET",
+            path: `/api/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      create: (input: ServerLabelCreateInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelCreateOutput }>(
+          {
+            method: "POST",
+            path: `/api/label`,
+            body: { name: input["name"], parentID: input["parentID"] },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      update: (input: ServerLabelUpdateInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelUpdateOutput }>(
+          {
+            method: "PATCH",
+            path: `/api/label/${encodeURIComponent(input.labelID)}`,
+            body: { name: input["name"], parentID: input["parentID"] },
+            successStatus: 200,
+            declaredStatuses: [404, 400, 409, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      remove: (input: ServerLabelRemoveInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelRemoveOutput }>(
+          {
+            method: "DELETE",
+            path: `/api/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      listForSession: (input: ServerLabelListForSessionInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelListForSessionOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      assign: (input: ServerLabelAssignInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelAssignOutput }>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      unassign: (input: ServerLabelUnassignInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelUnassignOutput }>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
     },
   }
 }

@@ -70,6 +70,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         roots: ctx.query.roots,
         start: ctx.query.start,
         search: ctx.query.search,
+        label: ctx.query.label,
         limit: ctx.query.limit,
       })
     })

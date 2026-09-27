@@ -21,12 +21,34 @@ import { useEvent } from "../context/event"
 
 type SessionListFilter = { scope?: "project"; path?: string }
 
+export const SESSION_LIST_SLASH = { name: "sessions", aliases: ["resume", "continue"] }
+
+/** Returns the search text typed after `/sessions` (or an alias), or undefined if the input is not that command. */
+export function parseSessionListCommand(text: string) {
+  const match = text.trim().match(/^\/(\S+)\s+([\s\S]+)$/)
+  if (!match) return undefined
+  if (match[1] !== SESSION_LIST_SLASH.name && !SESSION_LIST_SLASH.aliases.includes(match[1])) return undefined
+  return { command: match[1], search: match[2].trim() }
+}
+
+/**
+ * Splits picker text into title words and an optional `label:<path>` filter.
+ * Quote paths that contain spaces: `label:"Machine Learning/Week 1"`.
+ */
+export function parseSessionSearch(text: string) {
+  const match = text.match(/(?:^|\s)label:(?:"([^"]*)"?|(\S*))/i)
+  const label = (match?.[1] ?? match?.[2])?.trim()
+  const title = (match ? text.replace(match[0], " ") : text).replace(/\s+/g, " ").trim()
+  return { title, label: label || undefined }
+}
+
 export function createDialogSessionListQuery(input: { search?: string; filter: SessionListFilter }) {
-  const search = input.search?.trim()
+  const parsed = parseSessionSearch(input.search ?? "")
   return {
     roots: true,
-    limit: search ? 30 : 100,
-    ...(search ? { search } : {}),
+    limit: parsed.title || parsed.label ? 30 : 100,
+    ...(parsed.title ? { search: parsed.title } : {}),
+    ...(parsed.label ? { label: parsed.label } : {}),
     ...input.filter,
   }
 }
@@ -42,7 +64,7 @@ export function loadDialogSessionList<T>(input: {
   )
 }
 
-export function DialogSessionList() {
+export function DialogSessionList(props: { initialSearch?: string }) {
   const dialog = useDialog()
   const route = useRoute()
   const sync = useSync()
@@ -54,7 +76,7 @@ export function DialogSessionList() {
   const toast = useToast()
   const [toDelete, setToDelete] = createSignal<string>()
   const [deleted, setDeleted] = createSignal(new Set<string>())
-  const [search, setSearch] = createDebouncedSignal("", 150)
+  const [search, setSearch] = createDebouncedSignal(props.initialSearch ?? "", 150)
   const deleteHint = useCommandShortcut("session.delete")
   const quickSwitch1 = useCommandShortcut("session.quick_switch.1")
   const quickSwitch9 = useCommandShortcut("session.quick_switch.9")
@@ -77,19 +99,21 @@ export function DialogSessionList() {
 
   const currentSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
   const sessions = createMemo(() => {
-    const result = searchResults() ?? browseResults() ?? sync.data.session
+    const parsed = parseSessionSearch(search())
+    // Label membership is only known to the server, so never fall back to unfiltered local sessions for a label search.
+    const result = parsed.label ? (searchResults() ?? []) : (searchResults() ?? browseResults() ?? sync.data.session)
     const synced = new Map(sync.data.session.map((session) => [session.id, session]))
     const ids = new Set(result.map((session) => session.id))
-    const extra = [currentSessionID(), ...local.session.pinned()].flatMap((id) => {
+    const extra = (parsed.label ? [] : [currentSessionID(), ...local.session.pinned()]).flatMap((id) => {
       if (!id || ids.has(id)) return []
       const session = synced.get(id)
       if (session) ids.add(id)
       return session ? [session] : []
     })
-    const query = search().trim().toLowerCase()
+    const title = parsed.title.toLowerCase()
     return [...result.map((session) => synced.get(session.id) ?? session), ...extra]
       .filter((session) => !deleted().has(session.id))
-      .filter((session) => !query || session.title.toLowerCase().includes(query))
+      .filter((session) => !title || session.title.toLowerCase().includes(title))
   })
 
   onCleanup(
@@ -272,6 +296,8 @@ export function DialogSessionList() {
   return (
     <DialogSelect
       title="Sessions"
+      placeholder="Search, or label:<path>"
+      initialFilter={props.initialSearch}
       options={options()}
       skipFilter={true}
       preserveSelection={true}

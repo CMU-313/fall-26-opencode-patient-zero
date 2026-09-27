@@ -90,6 +90,8 @@ import type {
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
   InstanceDisposeResponses,
+  LabelCreateInput,
+  LabelUpdateInput,
   LocationRef,
   LspStatusErrors,
   LspStatusResponses,
@@ -295,6 +297,16 @@ import type {
   V2IntegrationGetResponses,
   V2IntegrationListErrors,
   V2IntegrationListResponses,
+  V2LabelCreateErrors,
+  V2LabelCreateResponses,
+  V2LabelGetErrors,
+  V2LabelGetResponses,
+  V2LabelListErrors,
+  V2LabelListResponses,
+  V2LabelRemoveErrors,
+  V2LabelRemoveResponses,
+  V2LabelUpdateErrors,
+  V2LabelUpdateResponses,
   V2LocationGetErrors,
   V2LocationGetResponses,
   V2ModelListErrors,
@@ -349,6 +361,12 @@ import type {
   V2SessionHistoryResponses,
   V2SessionInterruptErrors,
   V2SessionInterruptResponses,
+  V2SessionLabelAssignErrors,
+  V2SessionLabelAssignResponses,
+  V2SessionLabelListErrors,
+  V2SessionLabelListResponses,
+  V2SessionLabelUnassignErrors,
+  V2SessionLabelUnassignResponses,
   V2SessionListErrors,
   V2SessionListResponses,
   V2SessionMessageErrors,
@@ -3374,6 +3392,7 @@ export class Session2 extends HeyApiClient {
       roots?: boolean | "true" | "false"
       start?: number
       search?: string
+      label?: string
       limit?: number
     },
     options?: Options<never, ThrowOnError>,
@@ -3390,6 +3409,7 @@ export class Session2 extends HeyApiClient {
             { in: "query", key: "roots" },
             { in: "query", key: "start" },
             { in: "query", key: "search" },
+            { in: "query", key: "label" },
             { in: "query", key: "limit" },
           ],
         },
@@ -5423,6 +5443,95 @@ export class Question2 extends HeyApiClient {
   }
 }
 
+export class Label extends HeyApiClient {
+  /**
+   * List session labels
+   *
+   * Retrieve the labels assigned to a session, sorted by name.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<V2SessionLabelListResponses, V2SessionLabelListErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/label",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Unassign session label
+   *
+   * Remove a label from a session. Removing a label the session does not have is a no-op. Returns the session's labels.
+   */
+  public unassign<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "labelID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      V2SessionLabelUnassignResponses,
+      V2SessionLabelUnassignErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Assign session label
+   *
+   * Assign a label to a session. Assigning a label the session already has is a no-op. Returns the session's labels.
+   */
+  public assign<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "labelID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      V2SessionLabelAssignResponses,
+      V2SessionLabelAssignErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Session3 extends HeyApiClient {
   /**
    * List sessions
@@ -5870,6 +5979,11 @@ export class Session3 extends HeyApiClient {
   private _question?: Question2
   get question(): Question2 {
     return (this._question ??= new Question2({ client: this.client }))
+  }
+
+  private _label?: Label
+  get label(): Label {
+    return (this._label ??= new Label({ client: this.client }))
   }
 }
 
@@ -6987,6 +7101,124 @@ export class ProjectCopy2 extends HeyApiClient {
   }
 }
 
+export class Label2 extends HeyApiClient {
+  /**
+   * List labels
+   *
+   * Retrieve labels sorted by name. Omit parentID for every label, pass parentID=root for top-level labels, or pass a label ID for its direct children.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      parentID?: "root" | string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "parentID" }] }])
+    return (options?.client ?? this.client).get<V2LabelListResponses, V2LabelListErrors, ThrowOnError>({
+      url: "/api/label",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create label
+   *
+   * Create a label, optionally nested under a parent label. Sibling names must be unique, ignoring case.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelCreateInput: LabelCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "labelCreateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<V2LabelCreateResponses, V2LabelCreateErrors, ThrowOnError>({
+      url: "/api/label",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove label
+   *
+   * Delete a label and every label nested beneath it. Returns the IDs of all deleted labels.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "labelID" }] }])
+    return (options?.client ?? this.client).delete<V2LabelRemoveResponses, V2LabelRemoveErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get label
+   *
+   * Retrieve a label by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "labelID" }] }])
+    return (options?.client ?? this.client).get<V2LabelGetResponses, V2LabelGetErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update label
+   *
+   * Rename a label or move it under another parent. Pass parentID=null to move it to the top level. Moving a label beneath itself or one of its descendants is rejected.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+      labelUpdateInput: LabelUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "labelID" },
+            { key: "labelUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2LabelUpdateResponses, V2LabelUpdateErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -7071,6 +7303,11 @@ export class V2 extends HeyApiClient {
   private _projectCopy?: ProjectCopy2
   get projectCopy(): ProjectCopy2 {
     return (this._projectCopy ??= new ProjectCopy2({ client: this.client }))
+  }
+
+  private _label?: Label2
+  get label(): Label2 {
+    return (this._label ??= new Label2({ client: this.client }))
   }
 }
 

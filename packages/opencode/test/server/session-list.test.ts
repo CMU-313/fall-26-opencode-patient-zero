@@ -9,12 +9,14 @@ import { disposeAllInstances, provideInstance, TestInstance } from "../fixture/f
 import { mkdir } from "fs/promises"
 import path from "path"
 import { SessionTable } from "@opencode-ai/core/session/sql"
+import { SessionLabelTable } from "@opencode-ai/core/label/sql"
+import { Label } from "@opencode-ai/core/label"
 import { eq } from "drizzle-orm"
 import { testEffect } from "../lib/effect"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 const layer = (experimentalWorkspaces: boolean) =>
-  AppNodeBuilder.build(LayerNode.group([Database.node, SessionNs.node, SessionProjector.node]), [
+  AppNodeBuilder.build(LayerNode.group([Database.node, Label.node, SessionNs.node, SessionProjector.node]), [
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalWorkspaces })],
   ])
 const it = testEffect(layer(false))
@@ -266,6 +268,61 @@ describe("session.list", () => {
 
         expect(titles).toContain("unique-search-term-abc")
         expect(titles).not.toContain("other-session-xyz")
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "filters by label path, including nested labels",
+    () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const { db } = yield* Database.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+        const personal = yield* labels.create({ name: "Personal" })
+
+        const course = yield* withSession({ title: "course-notes" })
+        const nested = yield* withSession({ title: "sql-homework" })
+        const other = yield* withSession({ title: "groceries" })
+        yield* withSession({ title: "unlabeled" })
+        yield* db
+          .insert(SessionLabelTable)
+          .values([
+            { session_id: course.id, label_id: coursework.id },
+            { session_id: nested.id, label_id: databases.id },
+            { session_id: other.id, label_id: personal.id },
+          ])
+          .run()
+
+        const titles = (label: string, search?: string) =>
+          SessionNs.use.list({ label, search }).pipe(Effect.map((sessions) => sessions.map((s) => s.title).sort()))
+
+        expect(yield* titles("coursework")).toEqual(["course-notes", "sql-homework"])
+        expect(yield* titles("Coursework/Databases")).toEqual(["sql-homework"])
+        expect(yield* titles("Coursework", "course")).toEqual(["course-notes"])
+        expect(yield* titles("Missing")).toEqual([])
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "lists sessions after a label is assigned and stops after it is unassigned",
+    () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const work = yield* labels.create({ name: "Work" })
+        const session = yield* withSession({ title: "labeled" })
+        yield* withSession({ title: "unlabeled" })
+        const titles = SessionNs.use
+          .list({ label: "Work" })
+          .pipe(Effect.map((sessions) => sessions.map((s) => s.title)))
+
+        yield* labels.assign({ sessionID: session.id, labelID: work.id })
+        expect(yield* titles).toEqual(["labeled"])
+
+        yield* labels.unassign({ sessionID: session.id, labelID: work.id })
+        expect(yield* titles).toEqual([])
       }),
     { git: true },
   )
