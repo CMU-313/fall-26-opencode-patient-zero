@@ -27,6 +27,8 @@ import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { PartTable, SessionTable } from "@opencode-ai/core/session/sql"
+import { SessionLabelTable } from "@opencode-ai/core/label/sql"
+import { Label } from "@opencode-ai/core/label"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import { MessageV2 } from "./message-v2"
 import type { InstanceContext } from "../project/instance-context"
@@ -307,6 +309,8 @@ export type ListInput = {
   roots?: boolean
   start?: number
   search?: string
+  /** A "/"-separated label path; only sessions carrying a matching label, or a label nested beneath it, are listed. */
+  label?: string
   limit?: number
 }
 
@@ -488,7 +492,7 @@ export type Patch = Omit<Partial<Info>, "time" | "share" | "summary" | "revert" 
 const layer: Layer.Layer<
   Service,
   never,
-  BackgroundJob.Service | RuntimeFlags.Service | Database.Service | EventV2Bridge.Service
+  BackgroundJob.Service | RuntimeFlags.Service | Database.Service | EventV2Bridge.Service | Label.Service
 > = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -497,6 +501,7 @@ const layer: Layer.Layer<
     const background = yield* BackgroundJob.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const labels = yield* Label.Service
 
     const createNext = Effect.fn("Session.createNext")(function* (input: {
       id?: SessionID
@@ -547,9 +552,12 @@ const layer: Layer.Layer<
 
     const list = Effect.fn("Session.list")(function* (input?: ListInput) {
       const ctx = yield* InstanceState.context
+      const labelIDs = input?.label === undefined ? undefined : yield* labels.resolvePath(input.label)
+      if (labelIDs?.length === 0) return []
       return yield* listByProject(db, {
         projectID: ctx.project.id,
         experimentalWorkspaces: flags.experimentalWorkspaces,
+        labelIDs,
         ...input,
       })
     })
@@ -959,6 +967,7 @@ function listByProject(
   input: ListInput & {
     projectID: ProjectV2.ID
     experimentalWorkspaces: boolean
+    labelIDs?: ReadonlyArray<Label.ID>
   },
 ) {
   const conditions = [eq(SessionTable.project_id, input.projectID)]
@@ -993,6 +1002,17 @@ function listByProject(
   if (input.search) {
     conditions.push(like(SessionTable.title, `%${input.search}%`))
   }
+  if (input.labelIDs) {
+    conditions.push(
+      inArray(
+        SessionTable.id,
+        db
+          .select({ id: SessionLabelTable.session_id })
+          .from(SessionLabelTable)
+          .where(inArray(SessionLabelTable.label_id, [...input.labelIDs])),
+      ),
+    )
+  }
 
   const limit = input.limit ?? 100
 
@@ -1012,7 +1032,7 @@ function listByProject(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node],
+  deps: [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node, Label.node],
 })
 
 export * as Session from "./session"

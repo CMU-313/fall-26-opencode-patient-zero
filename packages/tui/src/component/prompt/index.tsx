@@ -49,6 +49,7 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
+import { DialogSessionList, parseSessionListCommand } from "../dialog-session-list"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
@@ -963,6 +964,17 @@ export function Prompt(props: PromptProps) {
     const trimmed = store.prompt.input.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       void exit()
+      return true
+    }
+    // `/sessions <text>` opens the session picker pre-filled instead of sending the text to the model.
+    // A server command with the same name still wins.
+    const sessionList = store.mode === "normal" ? parseSessionListCommand(trimmed) : undefined
+    if (sessionList && !sync.data.command.some((command) => command.name === sessionList.command)) {
+      input.extmarks.clear()
+      setStore("prompt", { input: "", parts: [] })
+      setStore("extmarkToPartIndex", new Map())
+      input.clear()
+      dialog.replace(() => <DialogSessionList initialSearch={sessionList.search} />)
       return true
     }
     const selectedModel = local.model.current()

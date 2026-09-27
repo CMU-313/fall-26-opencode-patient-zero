@@ -151,6 +151,115 @@ describe("ProjectCopy", () => {
     }),
   )
 
+  it.live("copies a non-git directory without node_modules and removes it", () =>
+    Effect.gen(function* () {
+      const input = yield* setup()
+      yield* Effect.promise(() => fs.rm(path.join(input.sourceDirectory, ".git"), { recursive: true }))
+      yield* Effect.promise(() => Bun.write(path.join(input.sourceDirectory, "src", "index.ts"), "original"))
+      yield* Effect.promise(() => Bun.write(path.join(input.sourceDirectory, "node_modules", "pkg", "index.js"), "dep"))
+      const copy = yield* ProjectCopy.Service
+      const temp = yield* Effect.promise(() => fs.realpath(path.dirname(input.root.path)))
+      const parent = abs(path.join(temp, path.basename(input.root.path) + "-directory-copy"))
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => fs.rm(parent, { recursive: true, force: true })).pipe(Effect.ignore),
+      )
+
+      const created = yield* copy.create({
+        projectID: input.projectID,
+        strategy: ProjectCopy.StrategyID.make("directory_copy"),
+        sourceDirectory: input.sourceDirectory,
+        directory: parent,
+        name: "copy",
+      })
+
+      expect(created.directory).toBe(abs(path.join(parent, "copy")))
+      expect(yield* Effect.promise(() => Bun.file(path.join(created.directory, "src", "index.ts")).text())).toBe(
+        "original",
+      )
+      expect(yield* Effect.promise(() => Bun.file(path.join(created.directory, "node_modules")).exists())).toBe(false)
+
+      yield* Effect.promise(() => Bun.write(path.join(created.directory, "src", "index.ts"), "experiment"))
+      expect(yield* Effect.promise(() => Bun.file(path.join(input.sourceDirectory, "src", "index.ts")).text())).toBe(
+        "original",
+      )
+
+      yield* copy.refresh({ projectID: input.projectID })
+      expect(yield* stored(input.projectID)).toContainEqual({
+        directory: created.directory,
+        strategy: "directory_copy",
+      })
+
+      yield* copy.remove({ projectID: input.projectID, directory: created.directory, force: false })
+      expect(yield* stored(input.projectID)).toEqual([{ directory: input.sourceDirectory, strategy: null }])
+      expect(yield* Effect.promise(() => fs.stat(created.directory).then(() => true, () => false))).toBe(false)
+    }),
+  )
+
+  it.live("copies an unregistered non-git folder of the global project", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const sourceDirectory = abs(path.join(root.path, "folder"))
+      yield* Effect.promise(() => Bun.write(path.join(sourceDirectory, "notes.txt"), "original"))
+      const { db } = yield* Database.Service
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: Project.ID.global, worktree: abs("/"), sandboxes: [], time_created: 1, time_updated: 1 })
+        .onConflictDoNothing()
+        .run()
+        .pipe(Effect.orDie)
+      const copy = yield* ProjectCopy.Service
+
+      const created = yield* copy.create({
+        projectID: Project.ID.global,
+        strategy: ProjectCopy.StrategyID.make("directory_copy"),
+        sourceDirectory,
+        directory: abs(path.join(root.path, "copies")),
+        name: "copy",
+      })
+
+      expect(yield* Effect.promise(() => Bun.file(path.join(created.directory, "notes.txt")).text())).toBe("original")
+      expect(yield* stored(Project.ID.global)).toEqual(
+        [
+          { directory: sourceDirectory, strategy: null },
+          { directory: created.directory, strategy: "directory_copy" },
+        ].toSorted((a, b) => a.directory.localeCompare(b.directory)),
+      )
+    }),
+  )
+
+  it.live("refuses to copy the filesystem root", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      const { db } = yield* Database.Service
+      yield* db
+        .insert(ProjectTable)
+        .values({ id: Project.ID.global, worktree: abs("/"), sandboxes: [], time_created: 1, time_updated: 1 })
+        .onConflictDoNothing()
+        .run()
+        .pipe(Effect.orDie)
+      const copy = yield* ProjectCopy.Service
+
+      const error = yield* copy
+        .create({
+          projectID: Project.ID.global,
+          strategy: ProjectCopy.StrategyID.make("directory_copy"),
+          sourceDirectory: abs("/"),
+          directory: abs(path.join(root.path, "copies")),
+          name: "copy",
+        })
+        .pipe(Effect.flip)
+
+      expect(error).toBeInstanceOf(ProjectCopy.DirectoryUnavailableError)
+      expect(yield* Effect.promise(() => fs.readdir(path.join(root.path, "copies")))).toEqual([])
+    }),
+  )
+
   it.live("requires force to remove a dirty git worktree", () =>
     Effect.gen(function* () {
       const input = yield* setup()

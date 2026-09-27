@@ -1,7 +1,52 @@
 import { Effect } from "effect"
+import { cp } from "fs/promises"
+import os from "os"
+import path from "path"
 import { AbsolutePath } from "../schema"
+import { FSUtil } from "../fs-util"
 import { Git } from "../git"
 import { DirectoryUnavailableError, StrategyID, type ListEntry, type Strategy } from "./copy"
+
+// Installed dependencies can be reinstalled in the copy and would make copying slow.
+const SKIPPED_DIRECTORIES = new Set(["node_modules"])
+
+export function makeDirectoryCopyStrategy(input: {
+  fs: FSUtil.Interface
+  canonical: (directory: AbsolutePath) => Effect.Effect<AbsolutePath, DirectoryUnavailableError>
+}) {
+  return {
+    id: StrategyID.make("directory_copy"),
+    create: Effect.fn("ProjectCopy.DirectoryCopy.create")(function* (options) {
+      // Refuse sources that are almost certainly not a project, such as the global project's root.
+      if (
+        options.sourceDirectory === path.parse(options.sourceDirectory).root ||
+        options.sourceDirectory === (yield* input.canonical(AbsolutePath.make(os.homedir())))
+      )
+        return yield* new DirectoryUnavailableError({ directory: options.sourceDirectory })
+      // FileSystem.copy has no filter option, so use node's cp to skip dependency directories.
+      yield* Effect.tryPromise({
+        try: () =>
+          cp(options.sourceDirectory, options.directory, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+            verbatimSymlinks: true,
+            filter: (source) => !SKIPPED_DIRECTORIES.has(path.basename(source)),
+          }),
+        catch: () => new DirectoryUnavailableError({ directory: options.directory }),
+      })
+      return { directory: yield* input.canonical(options.directory) }
+    }),
+    // A plain copy has no uncommitted-changes check like git worktrees, so `force` has nothing to guard.
+    remove: Effect.fn("ProjectCopy.DirectoryCopy.remove")(function* (options) {
+      yield* input.fs
+        .remove(options.directory, { recursive: true })
+        .pipe(Effect.mapError(() => new DirectoryUnavailableError({ directory: options.directory })))
+    }),
+    // Plain copies leave no trace in the source directory, so they are only known through their stored project_directory rows.
+    list: () => Effect.succeed([]),
+  } satisfies Strategy
+}
 
 export function makeGitWorktreeStrategy(input: {
   git: Git.Interface
