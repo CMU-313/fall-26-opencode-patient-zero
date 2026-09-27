@@ -8,7 +8,7 @@ import { Git } from "../git"
 import { makeLocationNode } from "../effect/app-node"
 import { Project } from "../project"
 import { ProjectDirectories } from "./directories"
-import { makeGitWorktreeStrategy } from "./copy-strategies"
+import { makeDirectoryCopyStrategy, makeGitWorktreeStrategy } from "./copy-strategies"
 import { Slug } from "../util/slug"
 import { EventV2 } from "../event"
 import { Database } from "../database/database"
@@ -153,11 +153,16 @@ const layer = Layer.effect(
 
     // Register default strategies
     yield* register(makeGitWorktreeStrategy({ git, canonical })).pipe(Effect.orDie)
+    yield* register(makeDirectoryCopyStrategy({ fs, canonical })).pipe(Effect.orDie)
 
     const strategies = () => Array.from(registry.values())
 
     const source = Effect.fnUntraced(function* (input: AbsolutePath, projectID: Project.ID) {
       const sourceDirectory = yield* canonical(input)
+      // Every non-git folder shares the global project and is never registered up front, so a folder
+      // becomes one of its roots the first time it is copied.
+      if (projectID === Project.ID.global)
+        yield* changed(projectID, yield* directories.create({ projectID, directory: sourceDirectory }))
       if (!(yield* directories.contains({ projectID, directory: sourceDirectory })))
         return yield* new SourceDirectoryNotFoundError({ directory: sourceDirectory })
       return sourceDirectory
