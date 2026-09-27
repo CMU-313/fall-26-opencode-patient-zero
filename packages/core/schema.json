@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "86b024f3-30c5-435b-b598-2864a73c1f31",
+  "id": "22275e98-885b-4a62-a60e-4b2464ed65d5",
   "prevIds": [
-    "f14a9b18-8207-487e-a3d3-227e629ba9ad"
+    "86b024f3-30c5-435b-b598-2864a73c1f31"
   ],
   "ddl": [
     {
@@ -40,6 +40,10 @@
     },
     {
       "name": "label",
+      "entityType": "tables"
+    },
+    {
+      "name": "session_label",
       "entityType": "tables"
     },
     {
@@ -595,6 +599,46 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "label"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "table": "session_label"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "label_id",
+      "entityType": "columns",
+      "table": "session_label"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "session_label"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "session_label"
     },
     {
       "type": "text",
@@ -1598,6 +1642,36 @@
     },
     {
       "columns": [
+        "session_id"
+      ],
+      "tableTo": "session",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_label_session_id_session_id_fk",
+      "entityType": "fks",
+      "table": "session_label"
+    },
+    {
+      "columns": [
+        "label_id"
+      ],
+      "tableTo": "label",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_session_label_label_id_label_id_fk",
+      "entityType": "fks",
+      "table": "session_label"
+    },
+    {
+      "columns": [
         "project_id"
       ],
       "tableTo": "project",
@@ -1755,6 +1829,16 @@
       "name": "control_account_pk",
       "entityType": "pks",
       "table": "control_account"
+    },
+    {
+      "columns": [
+        "session_id",
+        "label_id"
+      ],
+      "nameExplicit": false,
+      "name": "session_label_pk",
+      "entityType": "pks",
+      "table": "session_label"
     },
     {
       "columns": [
@@ -1982,6 +2066,20 @@
       "name": "label_parent_idx",
       "entityType": "indexes",
       "table": "label"
+    },
+    {
+      "columns": [
+        {
+          "value": "label_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "session_label_label_idx",
+      "entityType": "indexes",
+      "table": "session_label"
     },
     {
       "columns": [
