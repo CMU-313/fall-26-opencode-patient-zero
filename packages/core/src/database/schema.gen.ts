@@ -87,6 +87,27 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`label\` (
+          \`id\` text PRIMARY KEY,
+          \`name\` text NOT NULL,
+          \`parent_id\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`label_parent_id_label_id_fk\` FOREIGN KEY (\`parent_id\`) REFERENCES \`label\`(\`id\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`session_label\` (
+          \`session_id\` text NOT NULL,
+          \`label_id\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`session_label_pk\` PRIMARY KEY(\`session_id\`, \`label_id\`),
+          CONSTRAINT \`fk_session_label_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_session_label_label_id_label_id_fk\` FOREIGN KEY (\`label_id\`) REFERENCES \`label\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`permission\` (
           \`id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
@@ -238,6 +259,8 @@ export default {
       `)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
+      yield* tx.run(`CREATE INDEX \`label_parent_idx\` ON \`label\` (\`parent_id\`);`)
+      yield* tx.run(`CREATE INDEX \`session_label_label_idx\` ON \`session_label\` (\`label_id\`);`)
       yield* tx.run(
         `CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`,
       )

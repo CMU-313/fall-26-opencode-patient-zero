@@ -47,7 +47,7 @@ import { DialogDebug } from "./component/dialog-debug"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
-import { DialogSessionList } from "./component/dialog-session-list"
+import { DialogSessionList, SESSION_LIST_SLASH } from "./component/dialog-session-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
@@ -572,8 +572,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Switch session",
         category: "Session",
         suggested: sync.data.session.length > 0,
-        slashName: "sessions",
-        slashAliases: ["resume", "continue"],
+        slashName: SESSION_LIST_SLASH.name,
+        slashAliases: SESSION_LIST_SLASH.aliases,
         run: () => {
           dialog.replace(() => <DialogSessionList />)
         },

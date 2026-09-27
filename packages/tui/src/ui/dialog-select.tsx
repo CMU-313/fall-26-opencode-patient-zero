@@ -31,6 +31,8 @@ export interface DialogSelectProps<T> {
   ref?: (ref: DialogSelectRef<T>) => void
   onMove?: (option: DialogSelectOption<T>) => void
   onFilter?: (query: string) => void
+  /** Text the filter input starts with, e.g. a query typed after a slash command. */
+  initialFilter?: string
   onSelect?: (option: DialogSelectOption<T>) => void
   skipFilter?: boolean
   renderFilter?: boolean
@@ -89,7 +91,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
   const [store, setStore] = createStore({
     selected: 0,
-    filter: "",
+    filter: props.initialFilter ?? "",
     input: "keyboard" as "keyboard" | "mouse",
   })
   const [focusedAction, setFocusedAction] = createSignal<number>()
@@ -584,6 +586,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
               ref={(r) => {
                 input = r
                 input.traits = { status: "FILTER" }
+                if (props.initialFilter) {
+                  input.value = props.initialFilter
+                  input.cursorOffset = Bun.stringWidth(props.initialFilter)
+                }
                 setTimeout(() => {
                   if (!input) return
                   if (input.isDestroyed) return

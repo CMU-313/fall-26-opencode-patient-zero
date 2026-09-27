@@ -9447,6 +9447,7 @@ export type SessionListData = {
     roots?: boolean | "true" | "false"
     start?: number
     search?: string
+    label?: string
     limit?: number
   }
   url: "/session"
