@@ -681,6 +681,64 @@ const adaptGroup17 = (raw: RawClient["server.projectCopy"]) => ({
   refresh: Endpoint17_2(raw),
 })
 
+type Endpoint18_0Request = Parameters<RawClient["server.label"]["label.list"]>[0]
+type Endpoint18_0Input = { readonly parentID?: Endpoint18_0Request["query"]["parentID"] }
+const Endpoint18_0 = (raw: RawClient["server.label"]) => (input?: Endpoint18_0Input) =>
+  raw["label.list"]({ query: { parentID: input?.["parentID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_1Request = Parameters<RawClient["server.label"]["label.get"]>[0]
+type Endpoint18_1Input = { readonly labelID: Endpoint18_1Request["params"]["labelID"] }
+const Endpoint18_1 = (raw: RawClient["server.label"]) => (input: Endpoint18_1Input) =>
+  raw["label.get"]({ params: { labelID: input["labelID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_2Request = Parameters<RawClient["server.label"]["label.create"]>[0]
+type Endpoint18_2Input = {
+  readonly name: Endpoint18_2Request["payload"]["name"]
+  readonly parentID?: Endpoint18_2Request["payload"]["parentID"]
+}
+const Endpoint18_2 = (raw: RawClient["server.label"]) => (input: Endpoint18_2Input) =>
+  raw["label.create"]({ payload: { name: input["name"], parentID: input["parentID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_3Request = Parameters<RawClient["server.label"]["label.update"]>[0]
+type Endpoint18_3Input = {
+  readonly labelID: Endpoint18_3Request["params"]["labelID"]
+  readonly name?: Endpoint18_3Request["payload"]["name"]
+  readonly parentID?: Endpoint18_3Request["payload"]["parentID"]
+}
+const Endpoint18_3 = (raw: RawClient["server.label"]) => (input: Endpoint18_3Input) =>
+  raw["label.update"]({
+    params: { labelID: input["labelID"] },
+    payload: { name: input["name"], parentID: input["parentID"] },
+  }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_4Request = Parameters<RawClient["server.label"]["label.remove"]>[0]
+type Endpoint18_4Input = { readonly labelID: Endpoint18_4Request["params"]["labelID"] }
+const Endpoint18_4 = (raw: RawClient["server.label"]) => (input: Endpoint18_4Input) =>
+  raw["label.remove"]({ params: { labelID: input["labelID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+const adaptGroup18 = (raw: RawClient["server.label"]) => ({
+  list: Endpoint18_0(raw),
+  get: Endpoint18_1(raw),
+  create: Endpoint18_2(raw),
+  update: Endpoint18_3(raw),
+  remove: Endpoint18_4(raw),
+})
+
 const adaptClient = (raw: RawClient) => ({
   health: adaptGroup0(raw["server.health"]),
   location: adaptGroup1(raw["server.location"]),
@@ -700,6 +758,7 @@ const adaptClient = (raw: RawClient) => ({
   questions: adaptGroup15(raw["server.question"]),
   references: adaptGroup16(raw["server.reference"]),
   projectCopies: adaptGroup17(raw["server.projectCopy"]),
+  "server.label": adaptGroup18(raw["server.label"]),
 })
 
 export const make = (options?: { readonly baseUrl?: URL | string }) =>
