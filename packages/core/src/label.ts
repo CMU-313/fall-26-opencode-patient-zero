@@ -181,7 +181,7 @@ const layer = Layer.effect(
     const create = Effect.fn("Label.create")(function* (input: CreateInput) {
       const name = yield* normalizeName(input.name)
       const parentID = input.parentID ?? null
-      if (parentID) yield* requireRow(parentID)
+      if (parentID !== null) yield* requireRow(parentID)
       yield* ensureUniqueName({ name, parentID })
 
       const row = yield* db
