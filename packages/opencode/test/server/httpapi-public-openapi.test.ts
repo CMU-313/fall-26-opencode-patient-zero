@@ -347,4 +347,23 @@ describe("PublicApi OpenAPI v2 errors", () => {
       "ProjectNotFoundError",
     )
   })
+
+  test("documents label CRUD routes with their errors", () => {
+    const spec = OpenApi.fromApi(PublicApi) as OpenApiSpec
+    const collection = spec.paths["/api/label"]
+    const item = spec.paths["/api/label/{labelID}"]
+
+    expect(collection?.get?.parameters?.find((parameter) => parameter.name === "parentID")?.in).toBe("query")
+    expect(collection?.post?.requestBody?.required).toBe(true)
+    expect(item?.patch?.requestBody?.required).toBe(true)
+
+    for (const operation of [item?.get, item?.patch, item?.delete, collection?.post]) {
+      expect(componentNames(operation?.responses?.["404"])).toContain("LabelNotFoundError")
+    }
+    for (const operation of [collection?.post, item?.patch]) {
+      expect(componentNames(operation?.responses?.["400"])).toContain("InvalidRequestError")
+      expect(componentNames(operation?.responses?.["409"])).toContain("ConflictError")
+    }
+    expect(collection?.get?.responses?.["404"]).toBeUndefined()
+  })
 })

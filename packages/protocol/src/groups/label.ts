@@ -5,6 +5,10 @@ import { ConflictError, InvalidRequestError, LabelNotFoundError } from "../error
 
 const Response = Schema.Struct({ data: Label.Info }).annotate({ identifier: "LabelResponse" })
 
+// Inline payload structs so generated SDKs take body fields directly instead of a wrapper parameter.
+const CreatePayload = Schema.Struct(Label.CreateInput.fields)
+const UpdatePayload = Schema.Struct(Label.UpdateInput.fields)
+
 // Query strings cannot carry `null`, so "root" stands in for `Label.ListInput`'s top-level filter.
 export const LabelsQuery = Schema.Struct({
   parentID: Schema.Union([Schema.Literal("root"), Label.ID]).pipe(Schema.optional),
@@ -39,7 +43,7 @@ export const LabelGroup = HttpApiGroup.make("server.label")
   )
   .add(
     HttpApiEndpoint.post("label.create", "/api/label", {
-      payload: Label.CreateInput,
+      payload: CreatePayload,
       success: Response,
       error: [LabelNotFoundError, InvalidRequestError, ConflictError],
     }).annotateMerge(
@@ -54,7 +58,7 @@ export const LabelGroup = HttpApiGroup.make("server.label")
   .add(
     HttpApiEndpoint.patch("label.update", "/api/label/:labelID", {
       params: { labelID: Label.ID },
-      payload: Label.UpdateInput,
+      payload: UpdatePayload,
       success: Response,
       error: [LabelNotFoundError, InvalidRequestError, ConflictError],
     }).annotateMerge(

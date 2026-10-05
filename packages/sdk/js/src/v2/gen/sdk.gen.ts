@@ -90,8 +90,6 @@ import type {
   GlobalUpgradeResponses,
   InstanceDisposeErrors,
   InstanceDisposeResponses,
-  LabelCreateInput,
-  LabelUpdateInput,
   LocationRef,
   LspStatusErrors,
   LspStatusResponses,
@@ -7027,12 +7025,23 @@ export class Label extends HeyApiClient {
    * Create a label, optionally nested under a parent label. Sibling names must be unique, ignoring case.
    */
   public create<ThrowOnError extends boolean = false>(
-    parameters: {
-      labelCreateInput: LabelCreateInput
+    parameters?: {
+      name?: string
+      parentID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ key: "labelCreateInput", map: "body" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "name" },
+            { in: "body", key: "parentID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).post<V2LabelCreateResponses, V2LabelCreateErrors, ThrowOnError>({
       url: "/api/label",
       ...options,
@@ -7091,7 +7100,8 @@ export class Label extends HeyApiClient {
   public update<ThrowOnError extends boolean = false>(
     parameters: {
       labelID: string
-      labelUpdateInput: LabelUpdateInput
+      name?: string
+      parentID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -7101,7 +7111,8 @@ export class Label extends HeyApiClient {
         {
           args: [
             { in: "path", key: "labelID" },
-            { key: "labelUpdateInput", map: "body" },
+            { in: "body", key: "name" },
+            { in: "body", key: "parentID" },
           ],
         },
       ],
