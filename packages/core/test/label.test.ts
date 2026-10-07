@@ -220,4 +220,49 @@ describe("Label", () => {
       }),
     )
   })
+
+  describe("resolvePath", () => {
+    it.effect("resolves a label and everything nested beneath it", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+        const sql = yield* labels.create({ name: "SQL", parentID: databases.id })
+        yield* labels.create({ name: "Personal" })
+
+        expect([...(yield* labels.resolvePath("Coursework"))].sort()).toEqual(
+          [coursework.id, databases.id, sql.id].sort(),
+        )
+        expect([...(yield* labels.resolvePath(" coursework / DATABASES "))].sort()).toEqual(
+          [databases.id, sql.id].sort(),
+        )
+      }),
+    )
+
+    it.effect("matches a path starting at any depth and every label that shares the name", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const research = yield* labels.create({ name: "Research" })
+        const courseDatabases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+        const researchDatabases = yield* labels.create({ name: "Databases", parentID: research.id })
+
+        expect([...(yield* labels.resolvePath("Databases"))].sort()).toEqual(
+          [courseDatabases.id, researchDatabases.id].sort(),
+        )
+        expect(yield* labels.resolvePath("Research/Databases")).toEqual([researchDatabases.id])
+      }),
+    )
+
+    it.effect("returns nothing for unknown or empty paths", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        yield* labels.create({ name: "Coursework" })
+
+        expect(yield* labels.resolvePath("Missing")).toEqual([])
+        expect(yield* labels.resolvePath("Missing/Coursework")).toEqual([])
+        expect(yield* labels.resolvePath(" / ")).toEqual([])
+      }),
+    )
+  })
 })

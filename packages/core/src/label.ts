@@ -99,6 +99,12 @@ export interface Interface {
    * assignments) can clean up references to them.
    */
   readonly remove: (id: ID) => Effect.Effect<ReadonlyArray<ID>, NotFoundError>
+  /**
+   * Resolves a "/"-separated label path, such as "Coursework/Databases", to the IDs of
+   * every matching label plus all labels nested beneath them. Names match case-insensitively,
+   * and the path may start at any depth, so "Databases" matches every label with that name.
+   */
+  readonly resolvePath: (path: string) => Effect.Effect<ReadonlyArray<ID>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Label") {}
@@ -252,7 +258,41 @@ const layer = Layer.effect(
       return ids.map((value) => ID.make(value))
     })
 
-    return Service.of({ create, get, list, update, remove })
+    const resolvePath = Effect.fn("Label.resolvePath")(function* (path: string) {
+      const segments = path
+        .split("/")
+        .map((segment) => segment.trim().toLowerCase())
+        .filter(Boolean)
+      if (!segments.length) return []
+
+      // Label trees are small, so matching in memory is simpler than a recursive query per segment.
+      const rows = yield* db
+        .select({ id: LabelTable.id, name: LabelTable.name, parent_id: LabelTable.parent_id })
+        .from(LabelTable)
+        .all()
+        .pipe(Effect.orDie)
+      const byID = new Map(rows.map((row) => [row.id, row]))
+      // Walk up from the label, matching the path from its last segment to its first.
+      const matchesPath = (row: (typeof rows)[number]) => {
+        let cursor: typeof row | undefined = row
+        for (const segment of segments.toReversed()) {
+          if (cursor?.name.toLowerCase() !== segment) return false
+          cursor = cursor.parent_id ? byID.get(cursor.parent_id) : undefined
+        }
+        return true
+      }
+
+      const ids = new Set(rows.filter(matchesPath).map((row) => row.id))
+      // Pull in descendants until no new labels are added.
+      while (true) {
+        const children = rows.filter((row) => row.parent_id && ids.has(row.parent_id) && !ids.has(row.id))
+        if (!children.length) break
+        children.forEach((row) => ids.add(row.id))
+      }
+      return [...ids].map((id) => ID.make(id))
+    })
+
+    return Service.of({ create, get, list, update, remove, resolvePath })
   }),
 )
 

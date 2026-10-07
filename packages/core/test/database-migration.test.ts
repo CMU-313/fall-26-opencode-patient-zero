@@ -20,7 +20,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2 } from "@opencode-ai/core/event"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
-import { LabelTable } from "@opencode-ai/core/label/sql"
+import { LabelTable, SessionLabelTable } from "@opencode-ai/core/label/sql"
 import { AbsolutePath } from "@opencode-ai/core/schema"
 import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionTable } from "@opencode-ai/core/session/sql"
@@ -125,6 +125,76 @@ describe("DatabaseMigration", () => {
           { id: "label_child", name: "Databases", parent_id: "label_root" },
           { id: "label_root", name: "Coursework", parent_id: null },
         ])
+      }),
+    )
+  })
+
+  test("assigns labels to sessions and removes assignments with either side", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+
+        const projectID = ProjectV2.ID.make("label_project")
+        const one = SessionSchema.ID.make("ses_one")
+        const two = SessionSchema.ID.make("ses_two")
+        yield* db
+          .insert(ProjectTable)
+          .values({
+            id: projectID,
+            worktree: AbsolutePath.make("/repo"),
+            sandboxes: [],
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+        yield* db
+          .insert(SessionTable)
+          .values(
+            [one, two].map((id) => ({
+              id,
+              project_id: projectID,
+              slug: id,
+              directory: "/repo",
+              title: id,
+              version: "test",
+              time_created: 1,
+              time_updated: 1,
+            })),
+          )
+          .run()
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_work", name: "Work", time_created: 1, time_updated: 1 },
+            { id: "label_home", name: "Home", time_created: 1, time_updated: 1 },
+          ])
+          .run()
+        yield* db
+          .insert(SessionLabelTable)
+          .values([
+            { session_id: one, label_id: "label_work", time_created: 1, time_updated: 1 },
+            { session_id: one, label_id: "label_home", time_created: 1, time_updated: 1 },
+            { session_id: two, label_id: "label_work", time_created: 1, time_updated: 1 },
+          ])
+          .run()
+
+        const assignments = () =>
+          db
+            .select({ session_id: SessionLabelTable.session_id, label_id: SessionLabelTable.label_id })
+            .from(SessionLabelTable)
+            .orderBy(SessionLabelTable.session_id, SessionLabelTable.label_id)
+            .all()
+
+        yield* db.delete(LabelTable).where(eq(LabelTable.id, "label_home")).run()
+        expect(yield* assignments()).toEqual([
+          { session_id: one, label_id: "label_work" },
+          { session_id: two, label_id: "label_work" },
+        ])
+
+        yield* db.delete(SessionTable).where(eq(SessionTable.id, one)).run()
+        expect(yield* assignments()).toEqual([{ session_id: two, label_id: "label_work" }])
       }),
     )
   })
