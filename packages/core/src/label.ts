@@ -183,7 +183,7 @@ const layer = Layer.effect(
     const create = Effect.fn("Label.create")(function* (input: CreateInput) {
       const name = yield* normalizeName(input.name)
       const parentID = input.parentID ?? null
-      if (parentID) yield* requireRow(parentID)
+      if (parentID !== null) yield* requireRow(parentID)
       yield* ensureUniqueName({ name, parentID })
 
       const row = yield* db
@@ -221,10 +221,10 @@ const layer = Layer.effect(
       const name = input.name === undefined ? current.name : yield* normalizeName(input.name)
       const parentID = input.parentID === undefined ? current.parent_id : input.parentID
 
-      if (parentID) {
+      if (parentID !== null) {
         // A label cannot become its own ancestor: walk up from the new parent and make sure we never reach `id`.
         let cursor: string | null = parentID
-        while (cursor) {
+        while (cursor !== null) {
           if (cursor === id) return yield* new CycleError({ id, parentID })
           cursor = (yield* requireRow(cursor)).parent_id
         }

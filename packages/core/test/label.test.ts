@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
+import { sql } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -110,6 +111,18 @@ describe("Label", () => {
     )
   })
 
+  it.effect("rejects an empty-string parent ID with NotFoundError instead of a database error", () =>
+    Effect.gen(function* () {
+      const labels = yield* Label.Service
+      const empty = Label.ID.make("")
+      const label = yield* labels.create({ name: "Label" })
+
+      expect(yield* failureTag(labels.create({ name: "Orphan", parentID: empty }))).toBe("Label.NotFoundError")
+      expect(yield* failureTag(labels.update(label.id, { parentID: empty }))).toBe("Label.NotFoundError")
+      expect(yield* labels.list()).toEqual([label])
+    }),
+  )
+
   describe("read", () => {
     it.effect("fails to get a label that does not exist", () =>
       Effect.gen(function* () {
@@ -125,23 +138,36 @@ describe("Label", () => {
         const personal = yield* labels.create({ name: "Personal" })
         const math = yield* labels.create({ name: "Math", parentID: school.id })
         const art = yield* labels.create({ name: "Art", parentID: school.id })
+        const algebra = yield* labels.create({ name: "Algebra", parentID: math.id })
 
-        expect((yield* labels.list()).map((label) => label.name)).toEqual(["Art", "Math", "Personal", "School"])
-        expect(yield* labels.list({ parentID: null })).toEqual([personal, school])
-        expect(yield* labels.list({ parentID: school.id })).toEqual([art, math])
+        expect(new Set((yield* labels.list()).map((label) => label.id))).toEqual(
+          new Set([school.id, personal.id, math.id, art.id, algebra.id]),
+        )
+        expect(new Set((yield* labels.list({ parentID: null })).map((label) => label.id))).toEqual(
+          new Set([personal.id, school.id]),
+        )
+        expect(new Set((yield* labels.list({ parentID: school.id })).map((label) => label.id))).toEqual(
+          new Set([art.id, math.id]),
+        )
+        expect(yield* labels.list({ parentID: math.id })).toEqual([algebra])
         expect(yield* labels.list({ parentID: personal.id })).toEqual([])
       }),
     )
   })
 
   describe("update", () => {
-    it.effect("renames a label", () =>
+    it.effect("renames a label and advances its update timestamp", () =>
       Effect.gen(function* () {
         const labels = yield* Label.Service
+        const database = yield* Database.Service
         const label = yield* labels.create({ name: "Draft" })
+        yield* database.db.run(sql`UPDATE label SET time_created = 10, time_updated = 10 WHERE id = ${label.id}`)
+        const before = yield* labels.get(label.id)
         const renamed = yield* labels.update(label.id, { name: " Final " })
 
         expect(renamed.name).toBe("Final")
+        expect(renamed.time.created).toBe(before.time.created)
+        expect(renamed.time.updated).toBeGreaterThan(before.time.updated)
         expect(yield* labels.get(label.id)).toEqual(renamed)
       }),
     )
@@ -235,12 +261,15 @@ describe("Label", () => {
         const labels = yield* Label.Service
         const root = yield* labels.create({ name: "Root" })
         const child = yield* labels.create({ name: "Child", parentID: root.id })
+        const sibling = yield* labels.create({ name: "Sibling", parentID: root.id })
         const grandchild = yield* labels.create({ name: "Grandchild", parentID: child.id })
         const keep = yield* labels.create({ name: "Keep" })
+        const keepChild = yield* labels.create({ name: "Keep child", parentID: keep.id })
 
         const removed = yield* labels.remove(root.id)
-        expect([...removed].sort()).toEqual([root.id, child.id, grandchild.id].sort())
-        expect(yield* labels.list()).toEqual([keep])
+        expect(new Set(removed)).toEqual(new Set([root.id, child.id, sibling.id, grandchild.id]))
+        expect(new Set((yield* labels.list()).map((label) => label.id))).toEqual(new Set([keep.id, keepChild.id]))
+        expect(yield* labels.list({ parentID: keep.id })).toEqual([keepChild])
       }),
     )
 
