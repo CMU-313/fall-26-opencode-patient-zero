@@ -1,6 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
-import { sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -400,6 +400,45 @@ describe("Label", () => {
         yield* labels.remove(coursework.id)
 
         expect(yield* labels.forSession(session)).toEqual([keep])
+      }),
+    )
+
+    it.effect("drops a session's assignments when the session is deleted", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const { db } = yield* Database.Service
+        const [session, other] = yield* createSessions("ses_one", "ses_two")
+        const work = yield* labels.create({ name: "Work" })
+        yield* labels.assign({ sessionID: session, labelID: work.id })
+        yield* labels.assign({ sessionID: other, labelID: work.id })
+
+        yield* db.delete(SessionTable).where(eq(SessionTable.id, session)).run().pipe(Effect.orDie)
+
+        expect(yield* labels.forSession(session)).toEqual([])
+        expect(yield* labels.forSession(other)).toEqual([work])
+      }),
+    )
+
+    it.effect("rejects assigning a label after it has been deleted", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const [session] = yield* createSessions("ses_one")
+        const work = yield* labels.create({ name: "Work" })
+        yield* labels.remove(work.id)
+
+        expect(yield* failureTag(labels.assign({ sessionID: session, labelID: work.id }))).toBe("Label.NotFoundError")
+        expect(yield* labels.forSession(session)).toEqual([])
+      }),
+    )
+
+    it.effect("treats unassigning or listing an unknown session as a no-op", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const work = yield* labels.create({ name: "Work" })
+        const ghost = SessionSchema.ID.make("ses_missing")
+
+        yield* labels.unassign({ sessionID: ghost, labelID: work.id })
+        expect(yield* labels.forSession(ghost)).toEqual([])
       }),
     )
   })
