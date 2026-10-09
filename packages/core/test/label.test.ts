@@ -75,6 +75,18 @@ describe("Label", () => {
     )
   })
 
+  it.effect("rejects an empty-string parent ID with NotFoundError instead of a database error", () =>
+    Effect.gen(function* () {
+      const labels = yield* Label.Service
+      const empty = Label.ID.make("")
+      const label = yield* labels.create({ name: "Label" })
+
+      expect(yield* failureTag(labels.create({ name: "Orphan", parentID: empty }))).toBe("Label.NotFoundError")
+      expect(yield* failureTag(labels.update(label.id, { parentID: empty }))).toBe("Label.NotFoundError")
+      expect(yield* labels.list()).toEqual([label])
+    }),
+  )
+
   describe("read", () => {
     it.effect("fails to get a label that does not exist", () =>
       Effect.gen(function* () {
