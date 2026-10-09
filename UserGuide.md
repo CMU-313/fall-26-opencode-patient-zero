@@ -95,7 +95,19 @@ These tests are sufficient because every operation has a passing case and every 
 
 ## HTTP Endpoints for Label Service (Jarrett, #23)
 
-HTTP endpoints to call Label Service
+### Overview
+
+Added 5 CRUD HTTP endpoints to call the Label Service (See above #14). 
+- `GET /api/label:`	Lists all labels. Add ?parentID=root for top-level labels only, or ?parentID=<id> for one label’s children
+- `GET /api/label/<id>:`	Gets one label with id
+- `POST /api/label:`	Creates a label. Body: {"name": "...", "parentID": "<id>"}, where parentID is optional
+- `PATCH /api/label/<id>:`	Renames or moves a label. Body: {"name": "..."} and/or {"parentID": "<id>"}; "parentID": null moves it to the top level
+- `DELETE /api/label/<id>:`	Deletes the label and all nested labels under it; Returns the deleted ID(s)
+
+### Tests
+
+Run from root
+
 Test cases were added in 3 different files:
 1. HTTP endpoint tests
 Tests the core functionality of the endpoints, making sure all CRUD operations are working and returning the correct HTTP response. Also includes some integration tests for testing consecutive operations.
