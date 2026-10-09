@@ -93,7 +93,7 @@ export default {
           \`parent_id\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
-          CONSTRAINT \`label_parent_id_label_id_fk\` FOREIGN KEY (\`parent_id\`) REFERENCES \`label\`(\`id\`)
+          CONSTRAINT \`label_parent_id_label_id_fk\` FOREIGN KEY (\`parent_id\`) REFERENCES \`label\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -260,6 +260,9 @@ export default {
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`label_parent_idx\` ON \`label\` (\`parent_id\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`label_parent_name_unique_idx\` ON \`label\` ((CASE WHEN "parent_id" IS NULL THEN 0 ELSE 1 END),(coalesce("parent_id", '')),(lower("name")));`,
+      )
       yield* tx.run(`CREATE INDEX \`session_label_label_idx\` ON \`session_label\` (\`label_id\`);`)
       yield* tx.run(
         `CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`,

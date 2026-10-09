@@ -1,4 +1,5 @@
-import { foreignKey, index, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
+import { foreignKey, index, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../database/schema.sql"
 import { SessionTable } from "../session/sql"
 import type { SessionSchema } from "../session/schema"
@@ -13,11 +14,16 @@ export const LabelTable = sqliteTable(
   },
   (table) => [
     index("label_parent_idx").on(table.parent_id),
+    uniqueIndex("label_parent_name_unique_idx").on(
+      sql`(CASE WHEN ${table.parent_id} IS NULL THEN 0 ELSE 1 END)`,
+      sql`(coalesce(${table.parent_id}, ''))`,
+      sql`(lower(${table.name}))`,
+    ),
     foreignKey({
       columns: [table.parent_id],
       foreignColumns: [table.id],
       name: "label_parent_id_label_id_fk",
-    }),
+    }).onDelete("cascade"),
   ],
 )
 
