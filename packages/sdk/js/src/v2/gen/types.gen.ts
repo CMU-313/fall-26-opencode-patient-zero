@@ -2957,6 +2957,24 @@ export type ProjectCopyError = {
   }
 }
 
+export type LabelsResponse = {
+  data: Array<LabelInfo>
+}
+
+export type LabelResponse = {
+  data: LabelInfo
+}
+
+export type LabelNotFoundError = {
+  _tag: "LabelNotFoundError"
+  labelID: string
+  message: string
+}
+
+export type LabelRemoveResponse = {
+  data: Array<string>
+}
+
 export type EffectHttpApiErrorForbidden = {
   _tag: "Forbidden"
 }
@@ -6149,6 +6167,16 @@ export type ReferenceInfo = {
 
 export type ProjectCopyCopy = {
   directory: string
+}
+
+export type LabelInfo = {
+  id: string
+  name: string
+  parentID?: string
+  time: {
+    created: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    updated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
 }
 
 export type EventModelsDevRefreshed = {
@@ -13585,6 +13613,189 @@ export type V2ProjectCopyRefreshResponses = {
 }
 
 export type V2ProjectCopyRefreshResponse = V2ProjectCopyRefreshResponses[keyof V2ProjectCopyRefreshResponses]
+
+export type V2LabelListData = {
+  body?: never
+  path?: never
+  query?: {
+    parentID?: "root" | string
+  }
+  url: "/api/label"
+}
+
+export type V2LabelListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2LabelListError = V2LabelListErrors[keyof V2LabelListErrors]
+
+export type V2LabelListResponses = {
+  /**
+   * LabelsResponse
+   */
+  200: LabelsResponse
+}
+
+export type V2LabelListResponse = V2LabelListResponses[keyof V2LabelListResponses]
+
+export type V2LabelCreateData = {
+  body: {
+    name: string
+    parentID?: string
+  }
+  path?: never
+  query?: never
+  url: "/api/label"
+}
+
+export type V2LabelCreateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * LabelNotFoundError
+   */
+  404: LabelNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2LabelCreateError = V2LabelCreateErrors[keyof V2LabelCreateErrors]
+
+export type V2LabelCreateResponses = {
+  /**
+   * LabelResponse
+   */
+  200: LabelResponse
+}
+
+export type V2LabelCreateResponse = V2LabelCreateResponses[keyof V2LabelCreateResponses]
+
+export type V2LabelRemoveData = {
+  body?: never
+  path: {
+    labelID: string
+  }
+  query?: never
+  url: "/api/label/{labelID}"
+}
+
+export type V2LabelRemoveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * LabelNotFoundError
+   */
+  404: LabelNotFoundError
+}
+
+export type V2LabelRemoveError = V2LabelRemoveErrors[keyof V2LabelRemoveErrors]
+
+export type V2LabelRemoveResponses = {
+  /**
+   * LabelRemoveResponse
+   */
+  200: LabelRemoveResponse
+}
+
+export type V2LabelRemoveResponse = V2LabelRemoveResponses[keyof V2LabelRemoveResponses]
+
+export type V2LabelGetData = {
+  body?: never
+  path: {
+    labelID: string
+  }
+  query?: never
+  url: "/api/label/{labelID}"
+}
+
+export type V2LabelGetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * LabelNotFoundError
+   */
+  404: LabelNotFoundError
+}
+
+export type V2LabelGetError = V2LabelGetErrors[keyof V2LabelGetErrors]
+
+export type V2LabelGetResponses = {
+  /**
+   * LabelResponse
+   */
+  200: LabelResponse
+}
+
+export type V2LabelGetResponse = V2LabelGetResponses[keyof V2LabelGetResponses]
+
+export type V2LabelUpdateData = {
+  body: {
+    name?: string
+    parentID?: string
+  }
+  path: {
+    labelID: string
+  }
+  query?: never
+  url: "/api/label/{labelID}"
+}
+
+export type V2LabelUpdateErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * LabelNotFoundError
+   */
+  404: LabelNotFoundError
+  /**
+   * ConflictError
+   */
+  409: ConflictError
+}
+
+export type V2LabelUpdateError = V2LabelUpdateErrors[keyof V2LabelUpdateErrors]
+
+export type V2LabelUpdateResponses = {
+  /**
+   * LabelResponse
+   */
+  200: LabelResponse
+}
+
+export type V2LabelUpdateResponse = V2LabelUpdateResponses[keyof V2LabelUpdateResponses]
 
 export type PtyConnectData = {
   body?: never
