@@ -2,8 +2,7 @@ export * as Label from "./label"
 
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
-import { ascending } from "@opencode-ai/schema/identifier"
-import { statics } from "@opencode-ai/schema/schema"
+import { Label } from "@opencode-ai/schema/label"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
 import { LabelTable } from "./label/sql"
@@ -11,45 +10,20 @@ import { LabelTable } from "./label/sql"
 /** Maximum label name length, so names stay readable in the session list UI. */
 export const MAX_NAME_LENGTH = 64
 
-export const ID = Schema.String.pipe(
-  Schema.brand("Label.ID"),
-  statics((schema) => ({ create: () => schema.make("lbl_" + ascending()) })),
-)
-export type ID = typeof ID.Type
+export const ID = Label.ID
+export type ID = Label.ID
 
-export const Info = Schema.Struct({
-  id: ID,
-  name: Schema.String,
-  /** Parent label, or undefined for a top-level label. */
-  parentID: ID.pipe(Schema.optional),
-  time: Schema.Struct({
-    created: Schema.Number,
-    updated: Schema.Number,
-  }),
-}).annotate({ identifier: "Label.Info" })
-export type Info = typeof Info.Type
+export const Info = Label.Info
+export type Info = Label.Info
 
-export const CreateInput = Schema.Struct({
-  name: Schema.String,
-  parentID: ID.pipe(Schema.optional),
-}).annotate({ identifier: "Label.CreateInput" })
-export type CreateInput = typeof CreateInput.Type
+export const CreateInput = Label.CreateInput
+export type CreateInput = Label.CreateInput
 
-export const ListInput = Schema.Struct({
-  /**
-   * `undefined` lists every label, `null` lists only top-level labels,
-   * and an ID lists the direct children of that label.
-   */
-  parentID: Schema.NullOr(ID).pipe(Schema.optional),
-}).annotate({ identifier: "Label.ListInput" })
-export type ListInput = typeof ListInput.Type
+export const ListInput = Label.ListInput
+export type ListInput = Label.ListInput
 
-export const UpdateInput = Schema.Struct({
-  name: Schema.String.pipe(Schema.optional),
-  /** `undefined` leaves the parent unchanged, `null` moves the label to the top level. */
-  parentID: Schema.NullOr(ID).pipe(Schema.optional),
-}).annotate({ identifier: "Label.UpdateInput" })
-export type UpdateInput = typeof UpdateInput.Type
+export const UpdateInput = Label.UpdateInput
+export type UpdateInput = Label.UpdateInput
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Label.NotFoundError", {
   id: Schema.String,
