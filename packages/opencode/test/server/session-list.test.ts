@@ -326,6 +326,11 @@ describe("session.list", () => {
 
         const ids = (yield* SessionNs.use.list({ label: "Coursework" })).map((session) => session.id)
         expect(ids.filter((id) => id === both.id)).toEqual([both.id])
+      }),
+    { git: true },
+  )
+
+  it.instance(
     "lists sessions after a label is assigned and stops after it is unassigned",
     () =>
       Effect.gen(function* () {
