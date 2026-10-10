@@ -359,6 +359,12 @@ import type {
   V2SessionHistoryResponses,
   V2SessionInterruptErrors,
   V2SessionInterruptResponses,
+  V2SessionLabelAssignErrors,
+  V2SessionLabelAssignResponses,
+  V2SessionLabelListErrors,
+  V2SessionLabelListResponses,
+  V2SessionLabelUnassignErrors,
+  V2SessionLabelUnassignResponses,
   V2SessionListErrors,
   V2SessionListResponses,
   V2SessionMessageErrors,
@@ -5435,6 +5441,95 @@ export class Question2 extends HeyApiClient {
   }
 }
 
+export class Label extends HeyApiClient {
+  /**
+   * List session labels
+   *
+   * Retrieve the labels assigned to a session, sorted by name.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<V2SessionLabelListResponses, V2SessionLabelListErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/label",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Unassign session label
+   *
+   * Remove a label from a session. Removing a label the session does not have is a no-op. Returns the session's labels.
+   */
+  public unassign<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "labelID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      V2SessionLabelUnassignResponses,
+      V2SessionLabelUnassignErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Assign session label
+   *
+   * Assign a label to a session. Assigning a label the session already has is a no-op. Returns the session's labels.
+   */
+  public assign<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "labelID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      V2SessionLabelAssignResponses,
+      V2SessionLabelAssignErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Session3 extends HeyApiClient {
   /**
    * List sessions
@@ -5882,6 +5977,11 @@ export class Session3 extends HeyApiClient {
   private _question?: Question2
   get question(): Question2 {
     return (this._question ??= new Question2({ client: this.client }))
+  }
+
+  private _label?: Label
+  get label(): Label {
+    return (this._label ??= new Label({ client: this.client }))
   }
 }
 
@@ -6999,7 +7099,7 @@ export class ProjectCopy2 extends HeyApiClient {
   }
 }
 
-export class Label extends HeyApiClient {
+export class Label2 extends HeyApiClient {
   /**
    * List labels
    *
@@ -7216,9 +7316,9 @@ export class V2 extends HeyApiClient {
     return (this._projectCopy ??= new ProjectCopy2({ client: this.client }))
   }
 
-  private _label?: Label
-  get label(): Label {
-    return (this._label ??= new Label({ client: this.client }))
+  private _label?: Label2
+  get label(): Label2 {
+    return (this._label ??= new Label2({ client: this.client }))
   }
 }
 

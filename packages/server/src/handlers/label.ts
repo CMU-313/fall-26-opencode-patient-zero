@@ -2,7 +2,12 @@ import { Label } from "@opencode-ai/core/label"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"
-import { ConflictError, InvalidRequestError, LabelNotFoundError } from "@opencode-ai/protocol/errors"
+import {
+  ConflictError,
+  InvalidRequestError,
+  LabelNotFoundError,
+  SessionNotFoundError,
+} from "@opencode-ai/protocol/errors"
 
 export const LabelHandler = HttpApiBuilder.group(Api, "server.label", (handlers) =>
   Effect.gen(function* () {
@@ -39,8 +44,33 @@ export const LabelHandler = HttpApiBuilder.group(Api, "server.label", (handlers)
           return { data: yield* labels.remove(ctx.params.labelID).pipe(Effect.mapError(notFound)) }
         }),
       )
+      .handle(
+        "session.label.list",
+        Effect.fn(function* (ctx) {
+          return { data: yield* labels.forSession(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.label.assign",
+        Effect.fn(function* (ctx) {
+          yield* labels.assign(ctx.params).pipe(Effect.mapError(assignError))
+          return { data: yield* labels.forSession(ctx.params.sessionID) }
+        }),
+      )
+      .handle(
+        "session.label.unassign",
+        Effect.fn(function* (ctx) {
+          yield* labels.unassign(ctx.params)
+          return { data: yield* labels.forSession(ctx.params.sessionID) }
+        }),
+      )
   }),
 )
+
+function assignError(error: Label.NotFoundError | Label.SessionNotFoundError) {
+  if (error instanceof Label.NotFoundError) return notFound(error)
+  return new SessionNotFoundError({ sessionID: error.sessionID, message: error.message })
+}
 
 function httpError(error: Label.NotFoundError | Label.InvalidNameError | Label.DuplicateNameError | Label.CycleError) {
   if (error instanceof Label.NotFoundError) return notFound(error)

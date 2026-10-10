@@ -15,6 +15,9 @@ import eventSourcedSessionInputMigration from "@opencode-ai/core/database/migrat
 import contextEpochAgentMigration from "@opencode-ai/core/database/migration/20260605042240_add_context_epoch_agent"
 import simplifyIntegrationCredentialsMigration from "@opencode-ai/core/database/migration/20260611192811_lush_chimera"
 import simplifySessionInputMigration from "@opencode-ai/core/database/migration/20260622202450_simplify_session_input"
+import labelsMigration from "@opencode-ai/core/database/migration/20260924012642_labels"
+import sessionLabelsMigration from "@opencode-ai/core/database/migration/20260927044105_session_labels"
+import labelIntegrityMigration from "@opencode-ai/core/database/migration/20261009202659_label-integrity"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { EventV2 } from "@opencode-ai/core/event"
@@ -46,6 +49,13 @@ const runFailure = <A, E>(effect: Effect.Effect<A, E, SqlClientService>) =>
   })
 
 const makeDb = EffectDrizzleSqlite.makeWithDefaults()
+
+const makeMigratedDb = Effect.gen(function* () {
+  const db = yield* makeDb
+  yield* DatabaseMigration.apply(db)
+  yield* db.run(sql`PRAGMA foreign_keys = ON`)
+  return db
+})
 
 describe("DatabaseMigration", () => {
   test("serializes concurrent embedded initialization for one database path", async () => {
@@ -85,6 +95,56 @@ describe("DatabaseMigration", () => {
         expect(
           yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_context_epoch'`),
         ).toEqual({ name: "session_context_epoch" })
+        expect(yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'label'`)).toEqual({
+          name: "label",
+        })
+        expect(yield* db.all(sql`PRAGMA table_info(label)`)).toEqual([
+          {
+            cid: 0,
+            name: "id",
+            type: "TEXT",
+            notnull: 0,
+            dflt_value: null,
+            pk: 1,
+          },
+          {
+            cid: 1,
+            name: "name",
+            type: "TEXT",
+            notnull: 1,
+            dflt_value: null,
+            pk: 0,
+          },
+          {
+            cid: 2,
+            name: "parent_id",
+            type: "TEXT",
+            notnull: 0,
+            dflt_value: null,
+            pk: 0,
+          },
+          {
+            cid: 3,
+            name: "time_created",
+            type: "INTEGER",
+            notnull: 1,
+            dflt_value: null,
+            pk: 0,
+          },
+          {
+            cid: 4,
+            name: "time_updated",
+            type: "INTEGER",
+            notnull: 1,
+            dflt_value: null,
+            pk: 0,
+          },
+        ])
+        expect(
+          yield* db.all(
+            sql`SELECT "table" AS table_name, "from" AS from_column, "to" AS to_column, on_delete AS delete_action FROM pragma_foreign_key_list('label')`,
+          ),
+        ).toEqual([{ table_name: "label", from_column: "parent_id", to_column: "id", delete_action: "CASCADE" }])
         expect(
           yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_label'`),
         ).toEqual({ name: "session_label" })
@@ -96,11 +156,13 @@ describe("DatabaseMigration", () => {
         expect(yield* db.get(sql`SELECT count(*) as count FROM migration`)).toEqual({ count: migrations.length })
         expect(
           yield* db.all(
-            sql`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('event_aggregate_seq_idx', 'event_aggregate_type_seq_idx', 'session_input_session_pending_seq_idx', 'session_input_session_pending_delivery_seq_idx', 'session_input_session_admitted_seq_idx', 'session_input_session_promoted_seq_idx', 'session_label_label_idx', 'session_message_session_idx', 'session_message_session_type_idx', 'session_message_session_seq_idx', 'session_message_session_type_seq_idx', 'session_message_session_time_created_id_idx') ORDER BY name`,
+            sql`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('event_aggregate_seq_idx', 'event_aggregate_type_seq_idx', 'label_parent_idx', 'label_parent_name_unique_idx', 'session_input_session_pending_seq_idx', 'session_input_session_pending_delivery_seq_idx', 'session_input_session_admitted_seq_idx', 'session_input_session_promoted_seq_idx', 'session_label_label_idx', 'session_message_session_idx', 'session_message_session_type_idx', 'session_message_session_seq_idx', 'session_message_session_type_seq_idx', 'session_message_session_time_created_id_idx') ORDER BY name`
           ),
         ).toEqual([
           { name: "event_aggregate_seq_idx" },
           { name: "event_aggregate_type_seq_idx" },
+          { name: "label_parent_idx" },
+          { name: "label_parent_name_unique_idx" },
           { name: "session_input_session_admitted_seq_idx" },
           { name: "session_input_session_pending_delivery_seq_idx" },
           { name: "session_input_session_promoted_seq_idx" },
@@ -113,31 +175,235 @@ describe("DatabaseMigration", () => {
     )
   })
 
-  test("stores labels with parent-child relationships", async () => {
+  test("upgrades existing label data with foreign keys enabled", async () => {
     await run(
       Effect.gen(function* () {
         const db = yield* makeDb
-        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`CREATE TABLE session (id text PRIMARY KEY)`)
         yield* db.run(sql`PRAGMA foreign_keys = ON`)
+        yield* DatabaseMigration.applyOnly(db, [labelsMigration, sessionLabelsMigration])
+
+        const sessionID = SessionSchema.ID.make("session_existing")
+        yield* db.run(sql`INSERT INTO session (id) VALUES (${sessionID})`)
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_existing_parent", name: "Existing", parent_id: null, time_created: 1, time_updated: 1 },
+            {
+              id: "label_existing_child",
+              name: "Child",
+              parent_id: "label_existing_parent",
+              time_created: 2,
+              time_updated: 2,
+            },
+          ])
+          .run()
+        yield* db
+          .insert(SessionLabelTable)
+          .values({ session_id: sessionID, label_id: "label_existing_child", time_created: 3, time_updated: 3 })
+          .run()
+
+        yield* DatabaseMigration.applyOnly(db, [labelIntegrityMigration])
+
+        expect(yield* db.all(sql`SELECT id, name, parent_id FROM label ORDER BY id`)).toEqual([
+          { id: "label_existing_child", name: "Child", parent_id: "label_existing_parent" },
+          { id: "label_existing_parent", name: "Existing", parent_id: null },
+        ])
+        expect(yield* db.all(sql`SELECT session_id, label_id FROM session_label`)).toEqual([
+          { session_id: sessionID, label_id: "label_existing_child" },
+        ])
+        expect(yield* db.get(sql`SELECT on_delete FROM pragma_foreign_key_list('label')`)).toEqual({
+          on_delete: "CASCADE",
+        })
+      }),
+    )
+  })
+
+  test("persists label hierarchies and timestamps", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeMigratedDb
 
         yield* db
           .insert(LabelTable)
           .values([
-            { id: "label_root", name: "Coursework", parent_id: null, time_created: 1, time_updated: 1 },
-            { id: "label_child", name: "Databases", parent_id: "label_root", time_created: 2, time_updated: 2 },
+            { id: "label_coursework", name: "Coursework", parent_id: null, time_created: 100, time_updated: 101 },
+            {
+              id: "label_databases",
+              name: "Databases",
+              parent_id: "label_coursework",
+              time_created: 200,
+              time_updated: 201,
+            },
+            { id: "label_sql", name: "SQL", parent_id: "label_databases", time_created: 300, time_updated: 301 },
+            { id: "label_personal", name: "Personal", parent_id: null, time_created: 400, time_updated: 401 },
+            { id: "label_hobbies", name: "Hobbies", parent_id: "label_personal", time_created: 500, time_updated: 501 },
           ])
           .run()
 
+        const rows = yield* db
+          .select({
+            id: LabelTable.id,
+            name: LabelTable.name,
+            parent_id: LabelTable.parent_id,
+            time_created: LabelTable.time_created,
+            time_updated: LabelTable.time_updated,
+          })
+          .from(LabelTable)
+          .all()
+
+        expect(new Map(rows.map((row) => [row.id, row]))).toEqual(
+          new Map([
+            [
+              "label_coursework",
+              { id: "label_coursework", name: "Coursework", parent_id: null, time_created: 100, time_updated: 101 },
+            ],
+            [
+              "label_databases",
+              {
+                id: "label_databases",
+                name: "Databases",
+                parent_id: "label_coursework",
+                time_created: 200,
+                time_updated: 201,
+              },
+            ],
+            [
+              "label_sql",
+              { id: "label_sql", name: "SQL", parent_id: "label_databases", time_created: 300, time_updated: 301 },
+            ],
+            [
+              "label_personal",
+              { id: "label_personal", name: "Personal", parent_id: null, time_created: 400, time_updated: 401 },
+            ],
+            [
+              "label_hobbies",
+              {
+                id: "label_hobbies",
+                name: "Hobbies",
+                parent_id: "label_personal",
+                time_created: 500,
+                time_updated: 501,
+              },
+            ],
+          ]),
+        )
+      }),
+    )
+  })
+
+  test("rejects a label with a missing parent", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeMigratedDb
+        const exit = yield* db
+          .insert(LabelTable)
+          .values({ id: "label_orphan", name: "Orphan", parent_id: "label_missing", time_created: 1, time_updated: 1 })
+          .run()
+          .pipe(Effect.exit)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) expect(Cause.pretty(exit.cause)).toContain("FOREIGN KEY constraint failed")
+      }),
+    )
+  })
+
+  test("cascades direct deletion of a label subtree", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeMigratedDb
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_parent", name: "Parent", parent_id: null, time_created: 1, time_updated: 1 },
+            { id: "label_child", name: "Child", parent_id: "label_parent", time_created: 2, time_updated: 2 },
+            { id: "label_grandchild", name: "Grandchild", parent_id: "label_child", time_created: 3, time_updated: 3 },
+            { id: "label_other", name: "Other", parent_id: null, time_created: 4, time_updated: 4 },
+          ])
+          .run()
+
+        yield* db.delete(LabelTable).where(eq(LabelTable.id, "label_parent")).run()
+
+        expect(new Set((yield* db.select({ id: LabelTable.id }).from(LabelTable).all()).map((row) => row.id))).toEqual(
+          new Set(["label_other"]),
+        )
+      }),
+    )
+  })
+
+  test("enforces case-insensitive sibling name uniqueness", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeMigratedDb
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_root", name: "Work", parent_id: null, time_created: 1, time_updated: 1 })
+          .run()
+
+        const duplicateRoot = yield* db
+          .insert(LabelTable)
+          .values({ id: "label_root_duplicate", name: "work", parent_id: null, time_created: 2, time_updated: 2 })
+          .run()
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(duplicateRoot)).toBe(true)
+        if (Exit.isFailure(duplicateRoot)) expect(Cause.pretty(duplicateRoot.cause)).toContain("UNIQUE constraint failed")
+
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_personal", name: "Personal", parent_id: null, time_created: 3, time_updated: 3 },
+            { id: "label_work_parent", name: "Projects", parent_id: null, time_created: 4, time_updated: 4 },
+          ])
+          .run()
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_child", name: "Inbox", parent_id: "label_work_parent", time_created: 5, time_updated: 5 })
+          .run()
+
+        const duplicateChild = yield* db
+          .insert(LabelTable)
+          .values({ id: "label_child_duplicate", name: "inbox", parent_id: "label_work_parent", time_created: 6, time_updated: 6 })
+          .run()
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(duplicateChild)).toBe(true)
+        if (Exit.isFailure(duplicateChild)) expect(Cause.pretty(duplicateChild.cause)).toContain("UNIQUE constraint failed")
+
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_child_other_parent", name: "inbox", parent_id: "label_personal", time_created: 7, time_updated: 7 })
+          .run()
+
         expect(
-          yield* db
-            .select({ id: LabelTable.id, name: LabelTable.name, parent_id: LabelTable.parent_id })
-            .from(LabelTable)
-            .orderBy(LabelTable.id)
-            .all(),
-        ).toEqual([
-          { id: "label_child", name: "Databases", parent_id: "label_root" },
-          { id: "label_root", name: "Coursework", parent_id: null },
-        ])
+          new Set((yield* db.select({ id: LabelTable.id }).from(LabelTable).all()).map((row) => row.id)),
+        ).toEqual(new Set(["label_root", "label_personal", "label_work_parent", "label_child", "label_child_other_parent"]))
+      }),
+    )
+  })
+
+  test("enforces label identity and name constraints", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeMigratedDb
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_unique", name: "Unique", parent_id: null, time_created: 1, time_updated: 1 })
+          .run()
+
+        const duplicate = yield* db
+          .insert(LabelTable)
+          .values({ id: "label_unique", name: "Duplicate", parent_id: null, time_created: 2, time_updated: 2 })
+          .run()
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(duplicate)).toBe(true)
+        if (Exit.isFailure(duplicate)) expect(Cause.pretty(duplicate.cause)).toContain("UNIQUE constraint failed")
+
+        const missingName = yield* db
+          .run(
+            sql`INSERT INTO label (id, name, parent_id, time_created, time_updated) VALUES ('label_missing_name', NULL, NULL, 3, 3)`,
+          )
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(missingName)).toBe(true)
+        if (Exit.isFailure(missingName)) expect(Cause.pretty(missingName.cause)).toContain("NOT NULL constraint failed")
       }),
     )
   })

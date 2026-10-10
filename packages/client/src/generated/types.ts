@@ -2882,3 +2882,51 @@ export type ServerLabelUpdateOutput = {
 export type ServerLabelRemoveInput = { readonly labelID: { readonly labelID: string }["labelID"] }
 
 export type ServerLabelRemoveOutput = { readonly data: ReadonlyArray<string> }["data"]
+
+export type ServerLabelListForSessionInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type ServerLabelListForSessionOutput = {
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly parentID?: string
+    readonly time: {
+      readonly created: number | "Infinity" | "-Infinity" | "NaN"
+      readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }>
+}["data"]
+
+export type ServerLabelAssignInput = {
+  readonly sessionID: { readonly sessionID: string; readonly labelID: string }["sessionID"]
+  readonly labelID: { readonly sessionID: string; readonly labelID: string }["labelID"]
+}
+
+export type ServerLabelAssignOutput = {
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly parentID?: string
+    readonly time: {
+      readonly created: number | "Infinity" | "-Infinity" | "NaN"
+      readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }>
+}["data"]
+
+export type ServerLabelUnassignInput = {
+  readonly sessionID: { readonly sessionID: string; readonly labelID: string }["sessionID"]
+  readonly labelID: { readonly sessionID: string; readonly labelID: string }["labelID"]
+}
+
+export type ServerLabelUnassignOutput = {
+  readonly data: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+    readonly parentID?: string
+    readonly time: {
+      readonly created: number | "Infinity" | "-Infinity" | "NaN"
+      readonly updated: number | "Infinity" | "-Infinity" | "NaN"
+    }
+  }>
+}["data"]

@@ -731,12 +731,45 @@ const Endpoint18_4 = (raw: RawClient["server.label"]) => (input: Endpoint18_4Inp
     Effect.map((value) => value.data),
   )
 
+type Endpoint18_5Request = Parameters<RawClient["server.label"]["session.label.list"]>[0]
+type Endpoint18_5Input = { readonly sessionID: Endpoint18_5Request["params"]["sessionID"] }
+const Endpoint18_5 = (raw: RawClient["server.label"]) => (input: Endpoint18_5Input) =>
+  raw["session.label.list"]({ params: { sessionID: input["sessionID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_6Request = Parameters<RawClient["server.label"]["session.label.assign"]>[0]
+type Endpoint18_6Input = {
+  readonly sessionID: Endpoint18_6Request["params"]["sessionID"]
+  readonly labelID: Endpoint18_6Request["params"]["labelID"]
+}
+const Endpoint18_6 = (raw: RawClient["server.label"]) => (input: Endpoint18_6Input) =>
+  raw["session.label.assign"]({ params: { sessionID: input["sessionID"], labelID: input["labelID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
+type Endpoint18_7Request = Parameters<RawClient["server.label"]["session.label.unassign"]>[0]
+type Endpoint18_7Input = {
+  readonly sessionID: Endpoint18_7Request["params"]["sessionID"]
+  readonly labelID: Endpoint18_7Request["params"]["labelID"]
+}
+const Endpoint18_7 = (raw: RawClient["server.label"]) => (input: Endpoint18_7Input) =>
+  raw["session.label.unassign"]({ params: { sessionID: input["sessionID"], labelID: input["labelID"] } }).pipe(
+    Effect.mapError(mapClientError),
+    Effect.map((value) => value.data),
+  )
+
 const adaptGroup18 = (raw: RawClient["server.label"]) => ({
   list: Endpoint18_0(raw),
   get: Endpoint18_1(raw),
   create: Endpoint18_2(raw),
   update: Endpoint18_3(raw),
   remove: Endpoint18_4(raw),
+  listForSession: Endpoint18_5(raw),
+  assign: Endpoint18_6(raw),
+  unassign: Endpoint18_7(raw),
 })
 
 const adaptClient = (raw: RawClient) => ({

@@ -5,7 +5,9 @@ import { Context, Effect, Layer, Schema } from "effect"
 import { Label } from "@opencode-ai/schema/label"
 import { Database } from "./database/database"
 import { makeGlobalNode } from "./effect/app-node"
-import { LabelTable } from "./label/sql"
+import { LabelTable, SessionLabelTable } from "./label/sql"
+import { SessionTable } from "./session/sql"
+import { SessionSchema } from "./session/schema"
 
 /** Maximum label name length, so names stay readable in the session list UI. */
 export const MAX_NAME_LENGTH = 64
@@ -59,6 +61,20 @@ export class CycleError extends Schema.TaggedErrorClass<CycleError>()("Label.Cyc
   }
 }
 
+export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()(
+  "Label.SessionNotFoundError",
+  { sessionID: Schema.String },
+) {
+  override get message() {
+    return `Session ${this.sessionID} does not exist`
+  }
+}
+
+export interface AssignInput {
+  readonly sessionID: SessionSchema.ID
+  readonly labelID: ID
+}
+
 export interface Interface {
   readonly create: (input: CreateInput) => Effect.Effect<Info, NotFoundError | InvalidNameError | DuplicateNameError>
   readonly get: (id: ID) => Effect.Effect<Info, NotFoundError>
@@ -79,6 +95,12 @@ export interface Interface {
    * and the path may start at any depth, so "Databases" matches every label with that name.
    */
   readonly resolvePath: (path: string) => Effect.Effect<ReadonlyArray<ID>>
+  /** Attaches a label to a session. Assigning a label the session already has is a no-op. */
+  readonly assign: (input: AssignInput) => Effect.Effect<void, NotFoundError | SessionNotFoundError>
+  /** Detaches a label from a session. Removing a label the session does not have is a no-op. */
+  readonly unassign: (input: AssignInput) => Effect.Effect<void>
+  /** Lists the labels attached to a session, sorted by name. */
+  readonly forSession: (sessionID: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Info>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Label") {}
@@ -161,7 +183,7 @@ const layer = Layer.effect(
     const create = Effect.fn("Label.create")(function* (input: CreateInput) {
       const name = yield* normalizeName(input.name)
       const parentID = input.parentID ?? null
-      if (parentID) yield* requireRow(parentID)
+      if (parentID !== null) yield* requireRow(parentID)
       yield* ensureUniqueName({ name, parentID })
 
       const row = yield* db
@@ -199,10 +221,10 @@ const layer = Layer.effect(
       const name = input.name === undefined ? current.name : yield* normalizeName(input.name)
       const parentID = input.parentID === undefined ? current.parent_id : input.parentID
 
-      if (parentID) {
+      if (parentID !== null) {
         // A label cannot become its own ancestor: walk up from the new parent and make sure we never reach `id`.
         let cursor: string | null = parentID
-        while (cursor) {
+        while (cursor !== null) {
           if (cursor === id) return yield* new CycleError({ id, parentID })
           cursor = (yield* requireRow(cursor)).parent_id
         }
@@ -266,7 +288,44 @@ const layer = Layer.effect(
       return [...ids].map((id) => ID.make(id))
     })
 
-    return Service.of({ create, get, list, update, remove, resolvePath })
+    const assign = Effect.fn("Label.assign")(function* (input: AssignInput) {
+      yield* requireRow(input.labelID)
+      const session = yield* db
+        .select({ id: SessionTable.id })
+        .from(SessionTable)
+        .where(eq(SessionTable.id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!session) return yield* new SessionNotFoundError({ sessionID: input.sessionID })
+      yield* db
+        .insert(SessionLabelTable)
+        .values({ session_id: input.sessionID, label_id: input.labelID })
+        .onConflictDoNothing()
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const unassign = Effect.fn("Label.unassign")(function* (input: AssignInput) {
+      yield* db
+        .delete(SessionLabelTable)
+        .where(and(eq(SessionLabelTable.session_id, input.sessionID), eq(SessionLabelTable.label_id, input.labelID)))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const forSession = Effect.fn("Label.forSession")(function* (sessionID: SessionSchema.ID) {
+      const rows = yield* db
+        .select({ label: LabelTable })
+        .from(SessionLabelTable)
+        .innerJoin(LabelTable, eq(LabelTable.id, SessionLabelTable.label_id))
+        .where(eq(SessionLabelTable.session_id, sessionID))
+        .orderBy(asc(LabelTable.name), asc(LabelTable.id))
+        .all()
+        .pipe(Effect.orDie)
+      return rows.map((row) => fromRow(row.label))
+    })
+
+    return Service.of({ create, get, list, update, remove, resolvePath, assign, unassign, forSession })
   }),
 )
 

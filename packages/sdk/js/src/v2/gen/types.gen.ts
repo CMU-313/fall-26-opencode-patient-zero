@@ -2975,6 +2975,10 @@ export type LabelRemoveResponse = {
   data: Array<string>
 }
 
+export type SessionLabelsResponse = {
+  data: Array<LabelInfo>
+}
+
 export type EffectHttpApiErrorForbidden = {
   _tag: "Forbidden"
 }
@@ -13796,6 +13800,105 @@ export type V2LabelUpdateResponses = {
 }
 
 export type V2LabelUpdateResponse = V2LabelUpdateResponses[keyof V2LabelUpdateResponses]
+
+export type V2SessionLabelListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/label"
+}
+
+export type V2SessionLabelListErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2SessionLabelListError = V2SessionLabelListErrors[keyof V2SessionLabelListErrors]
+
+export type V2SessionLabelListResponses = {
+  /**
+   * SessionLabelsResponse
+   */
+  200: SessionLabelsResponse
+}
+
+export type V2SessionLabelListResponse = V2SessionLabelListResponses[keyof V2SessionLabelListResponses]
+
+export type V2SessionLabelUnassignData = {
+  body?: never
+  path: {
+    sessionID: string
+    labelID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/label/{labelID}"
+}
+
+export type V2SessionLabelUnassignErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+}
+
+export type V2SessionLabelUnassignError = V2SessionLabelUnassignErrors[keyof V2SessionLabelUnassignErrors]
+
+export type V2SessionLabelUnassignResponses = {
+  /**
+   * SessionLabelsResponse
+   */
+  200: SessionLabelsResponse
+}
+
+export type V2SessionLabelUnassignResponse = V2SessionLabelUnassignResponses[keyof V2SessionLabelUnassignResponses]
+
+export type V2SessionLabelAssignData = {
+  body?: never
+  path: {
+    sessionID: string
+    labelID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/label/{labelID}"
+}
+
+export type V2SessionLabelAssignErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * LabelNotFoundError | SessionNotFoundError
+   */
+  404: LabelNotFoundError | SessionNotFoundError
+}
+
+export type V2SessionLabelAssignError = V2SessionLabelAssignErrors[keyof V2SessionLabelAssignErrors]
+
+export type V2SessionLabelAssignResponses = {
+  /**
+   * SessionLabelsResponse
+   */
+  200: SessionLabelsResponse
+}
+
+export type V2SessionLabelAssignResponse = V2SessionLabelAssignResponses[keyof V2SessionLabelAssignResponses]
 
 export type PtyConnectData = {
   body?: never
