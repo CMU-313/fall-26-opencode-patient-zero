@@ -6183,16 +6183,6 @@ export type LabelInfo = {
   }
 }
 
-export type LabelCreateInput = {
-  name: string
-  parentID?: string
-}
-
-export type LabelUpdateInput = {
-  name?: string
-  parentID?: string
-}
-
 export type EventModelsDevRefreshed = {
   id: string
   type: "models-dev.refreshed"
@@ -13660,7 +13650,10 @@ export type V2LabelListResponses = {
 export type V2LabelListResponse = V2LabelListResponses[keyof V2LabelListResponses]
 
 export type V2LabelCreateData = {
-  body: LabelCreateInput
+  body: {
+    name: string
+    parentID?: string
+  }
   path?: never
   query?: never
   url: "/api/label"
@@ -13767,7 +13760,10 @@ export type V2LabelGetResponses = {
 export type V2LabelGetResponse = V2LabelGetResponses[keyof V2LabelGetResponses]
 
 export type V2LabelUpdateData = {
-  body: LabelUpdateInput
+  body: {
+    name?: string
+    parentID?: string
+  }
   path: {
     labelID: string
   }
