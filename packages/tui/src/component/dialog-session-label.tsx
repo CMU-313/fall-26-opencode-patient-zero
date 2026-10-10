@@ -54,8 +54,7 @@ export function DialogSessionLabel(props: { sessionID: string }) {
     try {
       const labelID =
         choice.type === "create"
-          ? (await sdk.client.v2.label.create({ labelCreateInput: { name: choice.name } }, { throwOnError: true })).data
-              .data.id
+          ? (await sdk.client.v2.label.create({ name: choice.name }, { throwOnError: true })).data.data.id
           : choice.id
       if (choice.type === "create") await refetchLabels()
       const attached = choice.type === "label" && assigned()?.some((label) => label.id === labelID)
