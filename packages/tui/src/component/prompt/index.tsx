@@ -50,6 +50,7 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogSessionList, parseSessionListCommand } from "../dialog-session-list"
+import { DialogSessionLabel } from "../dialog-session-label"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
@@ -552,6 +553,19 @@ export function Prompt(props: PromptProps) {
         slashName: "move",
         run: () => {
           move.open()
+        },
+      },
+      {
+        title: "Label session",
+        desc: "Add or remove labels on this session",
+        name: "session.label",
+        category: "Session",
+        slashName: "label",
+        enabled: !!props.sessionID,
+        run: () => {
+          const sessionID = props.sessionID
+          if (!sessionID) return
+          dialog.replace(() => <DialogSessionLabel sessionID={sessionID} />)
         },
       },
     ].map((entry) => ({

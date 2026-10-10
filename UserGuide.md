@@ -93,6 +93,8 @@ Tests are in `packages/core/test/label.test.ts`. Each test uses a fresh in-memor
 
 These tests are sufficient because every operation has a passing case and every error case listed above has a test, including the two from our acceptance criteria (deleting a nonexistent label and editing a deleted label). The empty-string test was added after code review on #22 found that bug.
 
+---
+
 ## HTTP Endpoints for Label Service (Jarrett, #23)
 
 ### Overview
@@ -122,3 +124,58 @@ Tests for the labels schema in packages/schema
 cd packages/schema && bun test test/contract-hygiene.test.ts
 
 These tests are sufficient for ensuring that HTTP endpoints to call Label service works. Alongside adding unit tests for individual CRUD operations, integration tests for consecutive CRUD operations exist as well. The API routes and schema are also testing for further completeness.
+
+---
+
+## Assign Labels to Sessions (Tate, #15)
+
+### Overview
+
+Labels can now be attached to sessions. A session can have any number of labels, and the same label can be on many sessions. This is what makes the `label:` search in the session list return results.
+
+- **TUI:** the `/label` command opens a picker for the current session. Selecting a label toggles it on or off, and typing a new name lets you create a label and assign it in one step.
+- **HTTP API:**
+  - `GET /api/session/:sessionID/label` lists a session's labels, sorted by name.
+  - `PUT /api/session/:sessionID/label/:labelID` assigns a label.
+  - `DELETE /api/session/:sessionID/label/:labelID` unassigns a label.
+- **Service:** `Label.assign`, `Label.unassign`, and `Label.forSession` in `packages/core/src/label.ts`.
+
+Edge cases:
+
+- Assigning a label the session already has does nothing.
+- Unassigning a label the session doesn't have does nothing.
+- Assigning a label that doesn't exist (or was deleted) fails with a 404 `LabelNotFoundError`.
+- Assigning to a session that doesn't exist fails with a 404 `SessionNotFoundError`.
+- Deleting a label (or one of its parent labels) or deleting a session removes those assignments automatically.
+
+### How to use and user test
+
+1. Run `bun install`, then `bun dev` from the repo root to start opencode.
+2. Send a message so you're in a session, then type `/label` and press Enter.
+3. Type `Work`, then select **Create label "Work"**. It should show **✓ Assigned**.
+4. Select `Work` again. The checkmark should go away. Select it once more to reassign it.
+5. Press Esc, then type `/sessions label:Work`. Only sessions with the `Work` label should show up.
+6. Unassign `Work` with `/label` and search again. The session should no longer appear.
+7. Nested labels show as full paths like `Coursework/Databases`. Search them with `label:Coursework/Databases`, and use quotes if the path has spaces.
+
+### How to run the automated tests
+
+```bash
+cd packages/core && bun test test/label.test.ts
+cd ../opencode && bun test test/server/httpapi-session-label.test.ts test/server/session-list.test.ts
+```
+
+### Automated test locations
+
+- [`packages/core/test/label.test.ts`](packages/core/test/label.test.ts): the `session assignment` block tests the service directly against a real in-memory database.
+- [`packages/opencode/test/server/httpapi-session-label.test.ts`](packages/opencode/test/server/httpapi-session-label.test.ts) tests the three HTTP endpoints with real requests and a real session.
+- [`packages/opencode/test/server/session-list.test.ts`](packages/opencode/test/server/session-list.test.ts): the "lists sessions after a label is assigned" test checks the full path from assigning a label to finding the session with `label:` search.
+
+### Why the tests are sufficient
+
+The acceptance criteria for #15 were that labels work end to end and that there's no weird logic around missing or deleted labels. The tests cover this at all three layers: the service, the HTTP API, and session search.
+
+- Every operation (assign, unassign, list) has a passing test at both the service and HTTP level.
+- Every edge case listed above has its own test, including the "weird logic" ones: assigning a deleted label, assigning to a missing session, assigning twice, and unassigning something that isn't assigned.
+- Both cleanup paths are tested (deleting a label and deleting a session), so no leftover assignments point to things that are gone.
+- The search test proves assignments actually change what users see, not just what's in the database.

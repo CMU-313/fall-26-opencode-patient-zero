@@ -307,6 +307,27 @@ describe("session.list", () => {
   )
 
   it.instance(
+    "lists sessions after a label is assigned and stops after it is unassigned",
+    () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const work = yield* labels.create({ name: "Work" })
+        const session = yield* withSession({ title: "labeled" })
+        yield* withSession({ title: "unlabeled" })
+        const titles = SessionNs.use
+          .list({ label: "Work" })
+          .pipe(Effect.map((sessions) => sessions.map((s) => s.title)))
+
+        yield* labels.assign({ sessionID: session.id, labelID: work.id })
+        expect(yield* titles).toEqual(["labeled"])
+
+        yield* labels.unassign({ sessionID: session.id, labelID: work.id })
+        expect(yield* titles).toEqual([])
+      }),
+    { git: true },
+  )
+
+  it.instance(
     "respects limit parameter",
     () =>
       Effect.gen(function* () {

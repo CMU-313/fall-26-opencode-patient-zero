@@ -122,6 +122,12 @@ import type {
   ServerLabelUpdateOutput,
   ServerLabelRemoveInput,
   ServerLabelRemoveOutput,
+  ServerLabelListForSessionInput,
+  ServerLabelListForSessionOutput,
+  ServerLabelAssignInput,
+  ServerLabelAssignOutput,
+  ServerLabelUnassignInput,
+  ServerLabelUnassignOutput,
 } from "./types"
 import { ClientError } from "./client-error"
 
@@ -1052,6 +1058,39 @@ export function make(options: ClientOptions) {
             path: `/api/label/${encodeURIComponent(input.labelID)}`,
             successStatus: 200,
             declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      listForSession: (input: ServerLabelListForSessionInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelListForSessionOutput }>(
+          {
+            method: "GET",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      assign: (input: ServerLabelAssignInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelAssignOutput }>(
+          {
+            method: "PUT",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [404, 401, 400],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
+      unassign: (input: ServerLabelUnassignInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: ServerLabelUnassignOutput }>(
+          {
+            method: "DELETE",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/label/${encodeURIComponent(input.labelID)}`,
+            successStatus: 200,
+            declaredStatuses: [401, 400],
             empty: false,
           },
           requestOptions,
