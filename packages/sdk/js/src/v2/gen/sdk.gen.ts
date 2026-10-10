@@ -295,6 +295,16 @@ import type {
   V2IntegrationGetResponses,
   V2IntegrationListErrors,
   V2IntegrationListResponses,
+  V2LabelCreateErrors,
+  V2LabelCreateResponses,
+  V2LabelGetErrors,
+  V2LabelGetResponses,
+  V2LabelListErrors,
+  V2LabelListResponses,
+  V2LabelRemoveErrors,
+  V2LabelRemoveResponses,
+  V2LabelUpdateErrors,
+  V2LabelUpdateResponses,
   V2LocationGetErrors,
   V2LocationGetResponses,
   V2ModelListErrors,
@@ -6989,6 +6999,137 @@ export class ProjectCopy2 extends HeyApiClient {
   }
 }
 
+export class Label extends HeyApiClient {
+  /**
+   * List labels
+   *
+   * Retrieve labels sorted by name. Omit parentID for every label, pass parentID=root for top-level labels, or pass a label ID for its direct children.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      parentID?: "root" | string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "parentID" }] }])
+    return (options?.client ?? this.client).get<V2LabelListResponses, V2LabelListErrors, ThrowOnError>({
+      url: "/api/label",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create label
+   *
+   * Create a label, optionally nested under a parent label. Sibling names must be unique, ignoring case.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      name?: string
+      parentID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "name" },
+            { in: "body", key: "parentID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<V2LabelCreateResponses, V2LabelCreateErrors, ThrowOnError>({
+      url: "/api/label",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove label
+   *
+   * Delete a label and every label nested beneath it. Returns the IDs of all deleted labels.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "labelID" }] }])
+    return (options?.client ?? this.client).delete<V2LabelRemoveResponses, V2LabelRemoveErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get label
+   *
+   * Retrieve a label by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "labelID" }] }])
+    return (options?.client ?? this.client).get<V2LabelGetResponses, V2LabelGetErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update label
+   *
+   * Rename a label or move it under another parent. Pass parentID=null to move it to the top level. Moving a label beneath itself or one of its descendants is rejected.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      labelID: string
+      name?: string
+      parentID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "labelID" },
+            { in: "body", key: "name" },
+            { in: "body", key: "parentID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<V2LabelUpdateResponses, V2LabelUpdateErrors, ThrowOnError>({
+      url: "/api/label/{labelID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class V2 extends HeyApiClient {
   private _health?: Health
   get health(): Health {
@@ -7073,6 +7214,11 @@ export class V2 extends HeyApiClient {
   private _projectCopy?: ProjectCopy2
   get projectCopy(): ProjectCopy2 {
     return (this._projectCopy ??= new ProjectCopy2({ client: this.client }))
+  }
+
+  private _label?: Label
+  get label(): Label {
+    return (this._label ??= new Label({ client: this.client }))
   }
 }
 

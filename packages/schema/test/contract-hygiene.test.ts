@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import { Agent } from "../src/agent"
 import { FileSystem } from "../src/filesystem"
+import { Label } from "../src/label"
 import { Model } from "../src/model"
 import { Project } from "../src/project"
 import { Pty } from "../src/pty"
@@ -31,6 +32,26 @@ describe("contract hygiene", () => {
   test("current ID constructors expose create", () => {
     expect(Question.ID.create()).toStartWith("que_")
     expect(Pty.ID.create()).toStartWith("pty_")
+    expect(Label.ID.create()).toStartWith("lbl_")
+  })
+
+  test("label schemas omit an unset parent and keep null as the top-level marker", () => {
+    const time = { created: 1, updated: 1 }
+    const id = Label.ID.make("lbl_child")
+    expect(Schema.encodeSync(Label.Info)({ id, name: "Top", parentID: undefined, time })).toStrictEqual({
+      id,
+      name: "Top",
+      time,
+    })
+    expect(Schema.encodeSync(Label.Info)({ id, name: "Child", parentID: Label.ID.make("lbl_parent"), time })).toEqual({
+      id,
+      name: "Child",
+      parentID: "lbl_parent",
+      time,
+    })
+    expect(Schema.decodeUnknownSync(Label.UpdateInput)({ parentID: null })).toEqual({ parentID: null })
+    expect(Schema.decodeUnknownSync(Label.UpdateInput)({})).toStrictEqual({})
+    expect(() => Schema.decodeUnknownSync(Label.CreateInput)({})).toThrow()
   })
 
   test("reusable public identifiers are stable and unique", () => {
@@ -46,6 +67,10 @@ describe("contract hygiene", () => {
       Project.Time,
       Project.Info,
       Pty.Info,
+      Label.Info,
+      Label.CreateInput,
+      Label.ListInput,
+      Label.UpdateInput,
       Session.ListAnchor,
     ].map((schema) => schema.ast.annotations?.identifier)
 
