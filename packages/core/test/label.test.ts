@@ -328,6 +328,32 @@ describe("Label", () => {
         expect(yield* labels.resolvePath(" / ")).toEqual([])
       }),
     )
+
+    it.effect("ignores repeated, leading, and trailing separators", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+
+        expect([...(yield* labels.resolvePath("Coursework//Databases"))].sort()).toEqual([databases.id].sort())
+        expect([...(yield* labels.resolvePath("/Coursework/Databases/"))].sort()).toEqual([databases.id].sort())
+        expect([...(yield* labels.resolvePath("///"))].sort()).toEqual([])
+      }),
+    )
+
+    it.effect("does not match a label whose chain diverges partway through the path", () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const personal = yield* labels.create({ name: "Personal" })
+        yield* labels.create({ name: "Databases", parentID: coursework.id })
+        const personalNotes = yield* labels.create({ name: "Notes", parentID: personal.id })
+
+        // "Coursework/Notes" should not match Personal's "Notes" even though the leaf name matches.
+        expect(yield* labels.resolvePath("Coursework/Notes")).toEqual([])
+        expect(yield* labels.resolvePath("Personal/Notes")).toEqual([personalNotes.id])
+      }),
+    )
   })
 
   describe("session assignment", () => {

@@ -26,6 +26,8 @@ import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/se
 import { Session } from "@/session/session"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
 import { Database } from "@opencode-ai/core/database/database"
+import { Label } from "@opencode-ai/core/label"
+import { SessionLabelTable } from "@opencode-ai/core/label/sql"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ModelV2 } from "@opencode-ai/core/model"
@@ -44,7 +46,15 @@ const noopBootstrapLayer = Layer.succeed(
   InstanceBootstrapService.Service.of({ run: Effect.void }),
 )
 const appLayer = AppNodeBuilder.build(
-  LayerNode.group([InstanceStore.node, Project.node, Session.node, Workspace.node, Database.node, Ripgrep.node]),
+  LayerNode.group([
+    InstanceStore.node,
+    Project.node,
+    Session.node,
+    Workspace.node,
+    Database.node,
+    Ripgrep.node,
+    Label.node,
+  ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
 )
 const servedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
@@ -205,6 +215,16 @@ const clearSessionPath = (sessionID: SessionIDType) =>
   Effect.gen(function* () {
     const { db } = yield* Database.Service
     yield* db.update(SessionTable).set({ path: null }).where(eq(SessionTable.id, sessionID)).run().pipe(Effect.orDie)
+  })
+
+const assignLabel = (sessionID: SessionIDType, labelID: Label.ID) =>
+  Effect.gen(function* () {
+    const { db } = yield* Database.Service
+    yield* db
+      .insert(SessionLabelTable)
+      .values([{ session_id: sessionID, label_id: labelID }])
+      .run()
+      .pipe(Effect.orDie)
   })
 
 function request(path: string, init?: RequestInit) {
@@ -840,6 +860,67 @@ describe("session HttpApi", () => {
         })
         expect(response.status).toBe(200)
         expect((yield* json<Session.Info>(response)).time.archived).toBe(-1)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "filters the list endpoint by the label query parameter",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory }
+        const labels = yield* Label.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+
+        const course = yield* createSession({ title: "course-notes" })
+        const nested = yield* createSession({ title: "sql-homework" })
+        const unlabeled = yield* createSession({ title: "unlabeled" })
+        yield* assignLabel(course.id, coursework.id)
+        yield* assignLabel(nested.id, databases.id)
+
+        // Without a label, the parameter is simply absent and existing behavior is unchanged.
+        const unfiltered = yield* requestJson<Session.Info[]>(`${SessionPaths.list}?roots=true`, { headers })
+        expect(unfiltered.map((item) => item.id)).toEqual(expect.arrayContaining([course.id, nested.id, unlabeled.id]))
+
+        // The parent label path reaches the session-listing layer and includes the nested label's session.
+        const parentQuery = new URLSearchParams({ roots: "true", label: "Coursework" })
+        const parentFiltered = yield* requestJson<Session.Info[]>(`${SessionPaths.list}?${parentQuery}`, { headers })
+        expect(parentFiltered.map((item) => item.id).sort()).toEqual([course.id, nested.id].sort())
+
+        // A deeper path narrows to just the session tagged with the nested label.
+        const nestedQuery = new URLSearchParams({ roots: "true", label: "Coursework/Databases" })
+        const nestedFiltered = yield* requestJson<Session.Info[]>(`${SessionPaths.list}?${nestedQuery}`, { headers })
+        expect(nestedFiltered.map((item) => item.id)).toEqual([nested.id])
+
+        // A label path that matches nothing returns an empty list rather than falling back to all sessions.
+        const missingQuery = new URLSearchParams({ roots: "true", label: "Nonexistent/Path" })
+        const missingFiltered = yield* requestJson<Session.Info[]>(`${SessionPaths.list}?${missingQuery}`, {
+          headers,
+        })
+        expect(missingFiltered).toEqual([])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "encodes casing, nesting, and spaces in the label query parameter",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory }
+        const labels = yield* Label.Service
+        const course = yield* labels.create({ name: "Machine Learning" })
+        const week = yield* labels.create({ name: "Week 1", parentID: course.id })
+
+        const session = yield* createSession({ title: "ml-notes" })
+        yield* assignLabel(session.id, week.id)
+
+        // URLSearchParams percent-encodes the space and slash; the server must decode and resolve them.
+        const query = new URLSearchParams({ roots: "true", label: "machine learning/WEEK 1" })
+        const filtered = yield* requestJson<Session.Info[]>(`${SessionPaths.list}?${query}`, { headers })
+        expect(filtered.map((item) => item.id)).toEqual([session.id])
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )

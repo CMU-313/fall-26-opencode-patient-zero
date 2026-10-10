@@ -2,6 +2,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { useRoute } from "../context/route"
 import { useSync } from "../context/sync"
+import type { Session } from "@opencode-ai/sdk/v2"
 import { createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import path from "path"
 import { Locale } from "../util/locale"
@@ -53,6 +54,37 @@ export function createDialogSessionListQuery(input: { search?: string; filter: S
   }
 }
 
+/**
+ * Picks which sessions to show for the current search text.
+ * Label membership is only known to the server, so a label search never falls back to
+ * unfiltered local sessions, and never reintroduces the current or pinned sessions by ID.
+ */
+export function selectSessionListResults(input: {
+  search: string
+  searchResults?: ReadonlyArray<Session>
+  browseResults?: ReadonlyArray<Session>
+  syncSessions: ReadonlyArray<Session>
+  extraIDs: ReadonlyArray<string | undefined>
+  deletedIDs: ReadonlySet<string>
+}) {
+  const parsed = parseSessionSearch(input.search)
+  const result = parsed.label
+    ? (input.searchResults ?? [])
+    : (input.searchResults ?? input.browseResults ?? input.syncSessions)
+  const synced = new Map(input.syncSessions.map((session) => [session.id, session]))
+  const ids = new Set(result.map((session) => session.id))
+  const extra = (parsed.label ? [] : input.extraIDs).flatMap((id) => {
+    if (!id || ids.has(id)) return []
+    const session = synced.get(id)
+    if (session) ids.add(id)
+    return session ? [session] : []
+  })
+  const title = parsed.title.toLowerCase()
+  return [...result.map((session) => synced.get(session.id) ?? session), ...extra]
+    .filter((session) => !input.deletedIDs.has(session.id))
+    .filter((session) => !title || session.title.toLowerCase().includes(title))
+}
+
 export function loadDialogSessionList<T>(input: {
   search?: string
   filter: SessionListFilter
@@ -98,23 +130,16 @@ export function DialogSessionList(props: { initialSearch?: string }) {
   )
 
   const currentSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
-  const sessions = createMemo(() => {
-    const parsed = parseSessionSearch(search())
-    // Label membership is only known to the server, so never fall back to unfiltered local sessions for a label search.
-    const result = parsed.label ? (searchResults() ?? []) : (searchResults() ?? browseResults() ?? sync.data.session)
-    const synced = new Map(sync.data.session.map((session) => [session.id, session]))
-    const ids = new Set(result.map((session) => session.id))
-    const extra = (parsed.label ? [] : [currentSessionID(), ...local.session.pinned()]).flatMap((id) => {
-      if (!id || ids.has(id)) return []
-      const session = synced.get(id)
-      if (session) ids.add(id)
-      return session ? [session] : []
-    })
-    const title = parsed.title.toLowerCase()
-    return [...result.map((session) => synced.get(session.id) ?? session), ...extra]
-      .filter((session) => !deleted().has(session.id))
-      .filter((session) => !title || session.title.toLowerCase().includes(title))
-  })
+  const sessions = createMemo(() =>
+    selectSessionListResults({
+      search: search(),
+      searchResults: searchResults(),
+      browseResults: browseResults(),
+      syncSessions: sync.data.session,
+      extraIDs: [currentSessionID(), ...local.session.pinned()],
+      deletedIDs: deleted(),
+    }),
+  )
 
   onCleanup(
     event.on("session.deleted", (event) => {

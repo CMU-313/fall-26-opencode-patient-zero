@@ -39,6 +39,15 @@ const run = <A, E>(effect: Effect.Effect<A, E, SqlClientService>) =>
     effect.pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", disableWAL: true })), Effect.scoped),
   )
 
+/** Runs an effect expected to fail and returns a human-readable rendering of the underlying SQLite error. */
+const runFailure = <A, E>(effect: Effect.Effect<A, E, SqlClientService>) =>
+  Effect.runPromiseExit(
+    effect.pipe(Effect.provide(SqliteClient.layer({ filename: ":memory:", disableWAL: true })), Effect.scoped),
+  ).then((exit) => {
+    if (Exit.isSuccess(exit)) throw new Error("expected effect to fail, but it succeeded")
+    return Cause.pretty(exit.cause)
+  })
+
 const makeDb = EffectDrizzleSqlite.makeWithDefaults()
 
 const makeMigratedDb = Effect.gen(function* () {
@@ -137,6 +146,9 @@ describe("DatabaseMigration", () => {
           ),
         ).toEqual([{ table_name: "label", from_column: "parent_id", to_column: "id", delete_action: "CASCADE" }])
         expect(
+          yield* db.get(sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_label'`),
+        ).toEqual({ name: "session_label" })
+        expect(
           yield* db.get(
             sql`SELECT name FROM pragma_table_info('session_context_epoch') WHERE name IN ('agent', 'replacement_seq', 'revision')`,
           ),
@@ -144,7 +156,7 @@ describe("DatabaseMigration", () => {
         expect(yield* db.get(sql`SELECT count(*) as count FROM migration`)).toEqual({ count: migrations.length })
         expect(
           yield* db.all(
-            sql`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('event_aggregate_seq_idx', 'event_aggregate_type_seq_idx', 'label_parent_idx', 'label_parent_name_unique_idx', 'session_input_session_pending_seq_idx', 'session_input_session_pending_delivery_seq_idx', 'session_input_session_admitted_seq_idx', 'session_input_session_promoted_seq_idx', 'session_message_session_idx', 'session_message_session_type_idx', 'session_message_session_seq_idx', 'session_message_session_type_seq_idx', 'session_message_session_time_created_id_idx') ORDER BY name`,
+            sql`SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('event_aggregate_seq_idx', 'event_aggregate_type_seq_idx', 'label_parent_idx', 'label_parent_name_unique_idx', 'session_input_session_pending_seq_idx', 'session_input_session_pending_delivery_seq_idx', 'session_input_session_admitted_seq_idx', 'session_input_session_promoted_seq_idx', 'session_label_label_idx', 'session_message_session_idx', 'session_message_session_type_idx', 'session_message_session_seq_idx', 'session_message_session_type_seq_idx', 'session_message_session_time_created_id_idx') ORDER BY name`
           ),
         ).toEqual([
           { name: "event_aggregate_seq_idx" },
@@ -154,6 +166,7 @@ describe("DatabaseMigration", () => {
           { name: "session_input_session_admitted_seq_idx" },
           { name: "session_input_session_pending_delivery_seq_idx" },
           { name: "session_input_session_promoted_seq_idx" },
+          { name: "session_label_label_idx" },
           { name: "session_message_session_seq_idx" },
           { name: "session_message_session_time_created_id_idx" },
           { name: "session_message_session_type_seq_idx" },
@@ -463,6 +476,230 @@ describe("DatabaseMigration", () => {
         expect(yield* assignments()).toEqual([{ session_id: two, label_id: "label_work" }])
       }),
     )
+  })
+
+  test("declares session_label with a composite primary key, cascading foreign keys, and a label index", async () => {
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+
+        expect(
+          (yield* db.all<{ name: string; type: string; notnull: number; pk: number }>(
+            sql`SELECT name, type, "notnull", pk FROM pragma_table_info('session_label')`,
+          )).sort((a, b) => a.name.localeCompare(b.name)),
+        ).toEqual([
+          { name: "label_id", type: "TEXT", notnull: 1, pk: 2 },
+          { name: "session_id", type: "TEXT", notnull: 1, pk: 1 },
+          { name: "time_created", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "time_updated", type: "INTEGER", notnull: 1, pk: 0 },
+        ])
+
+        expect(
+          yield* db.all<{ table: string; from: string; to: string; on_delete: string }>(
+            sql`SELECT "table", "from", "to", on_delete FROM pragma_foreign_key_list('session_label') ORDER BY "table"`,
+          ),
+        ).toEqual([
+          { table: "label", from: "label_id", to: "id", on_delete: "CASCADE" },
+          { table: "session", from: "session_id", to: "id", on_delete: "CASCADE" },
+        ])
+
+        expect(
+          yield* db.all<{ name: string }>(
+            sql`SELECT name FROM pragma_index_info('session_label_label_idx')`,
+          ),
+        ).toEqual([{ name: "label_id" }])
+      }),
+    )
+  })
+
+  test("rejects a duplicate session-label pair but allows reusing either side with a different counterpart", async () => {
+    const projectID = ProjectV2.ID.make("label_project")
+    const sessionID = SessionSchema.ID.make("ses_dup")
+
+    const seed = (db: EffectDrizzleSqlite.EffectSQLiteDatabase) =>
+      Effect.gen(function* () {
+        yield* db
+          .insert(ProjectTable)
+          .values({
+            id: projectID,
+            worktree: AbsolutePath.make("/repo"),
+            sandboxes: [],
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+        yield* db
+          .insert(SessionTable)
+          .values({
+            id: sessionID,
+            project_id: projectID,
+            slug: sessionID,
+            directory: "/repo",
+            title: sessionID,
+            version: "test",
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+        yield* db
+          .insert(LabelTable)
+          .values([
+            { id: "label_one", name: "One", time_created: 1, time_updated: 1 },
+            { id: "label_two", name: "Two", time_created: 1, time_updated: 1 },
+          ])
+          .run()
+        yield* db
+          .insert(SessionLabelTable)
+          .values({ session_id: sessionID, label_id: "label_one", time_created: 1, time_updated: 1 })
+          .run()
+      })
+
+    const failure = await runFailure(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+        yield* seed(db)
+        yield* db
+          .insert(SessionLabelTable)
+          .values({ session_id: sessionID, label_id: "label_one", time_created: 2, time_updated: 2 })
+          .run()
+      }),
+    )
+    expect(failure).toContain("UNIQUE constraint failed")
+
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+        yield* seed(db)
+
+        // Reusing session_id with a different label_id remains a valid, distinct pair.
+        yield* db
+          .insert(SessionLabelTable)
+          .values({ session_id: sessionID, label_id: "label_two", time_created: 2, time_updated: 2 })
+          .run()
+
+        expect(
+          yield* db
+            .select({ session_id: SessionLabelTable.session_id, label_id: SessionLabelTable.label_id })
+            .from(SessionLabelTable)
+            .orderBy(SessionLabelTable.label_id)
+            .all(),
+        ).toEqual([
+          { session_id: sessionID, label_id: "label_one" },
+          { session_id: sessionID, label_id: "label_two" },
+        ])
+      }),
+    )
+  })
+
+  test("rejects associations that reference a nonexistent session or label", async () => {
+    const missingSessionFailure = await runFailure(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_orphan", name: "Orphan", time_created: 1, time_updated: 1 })
+          .run()
+        yield* db
+          .insert(SessionLabelTable)
+          .values({
+            session_id: SessionSchema.ID.make("ses_missing"),
+            label_id: "label_orphan",
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+      }),
+    )
+    expect(missingSessionFailure).toContain("FOREIGN KEY constraint failed")
+
+    const missingLabelFailure = await runFailure(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+
+        const projectID = ProjectV2.ID.make("label_project")
+        const sessionID = SessionSchema.ID.make("ses_real")
+        yield* db
+          .insert(ProjectTable)
+          .values({ id: projectID, worktree: AbsolutePath.make("/repo"), sandboxes: [], time_created: 1, time_updated: 1 })
+          .run()
+        yield* db
+          .insert(SessionTable)
+          .values({
+            id: sessionID,
+            project_id: projectID,
+            slug: sessionID,
+            directory: "/repo",
+            title: sessionID,
+            version: "test",
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+        yield* db
+          .insert(SessionLabelTable)
+          .values({ session_id: sessionID, label_id: "label_missing", time_created: 1, time_updated: 1 })
+          .run()
+      }),
+    )
+    expect(missingLabelFailure).toContain("FOREIGN KEY constraint failed")
+
+    await run(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        expect(yield* db.all(sql`SELECT * FROM session_label`)).toEqual([])
+      }),
+    )
+  })
+
+  test("requires explicit timestamps for session_label rows", async () => {
+    const failure = await runFailure(
+      Effect.gen(function* () {
+        const db = yield* makeDb
+        yield* DatabaseMigration.apply(db)
+        yield* db.run(sql`PRAGMA foreign_keys = ON`)
+
+        const projectID = ProjectV2.ID.make("label_project")
+        const sessionID = SessionSchema.ID.make("ses_timestamp")
+        yield* db
+          .insert(ProjectTable)
+          .values({ id: projectID, worktree: AbsolutePath.make("/repo"), sandboxes: [], time_created: 1, time_updated: 1 })
+          .run()
+        yield* db
+          .insert(SessionTable)
+          .values({
+            id: sessionID,
+            project_id: projectID,
+            slug: sessionID,
+            directory: "/repo",
+            title: sessionID,
+            version: "test",
+            time_created: 1,
+            time_updated: 1,
+          })
+          .run()
+        yield* db
+          .insert(LabelTable)
+          .values({ id: "label_timestamp", name: "Timestamp", time_created: 1, time_updated: 1 })
+          .run()
+
+        // Bypasses the Drizzle schema's $default/$onUpdate helpers (an ORM-level
+        // convenience, not a SQL DEFAULT) to prove the column itself rejects NULLs.
+        yield* db.run(
+          sql`INSERT INTO session_label (session_id, label_id) VALUES (${sessionID}, ${"label_timestamp"})`,
+        )
+      }),
+    )
+    expect(failure).toContain("NOT NULL constraint failed")
   })
 
   test("rejects a non-empty database without a session table", async () => {

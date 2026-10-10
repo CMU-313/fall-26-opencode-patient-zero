@@ -307,6 +307,30 @@ describe("session.list", () => {
   )
 
   it.instance(
+    "lists a multi-labeled session once even when several of its labels match",
+    () =>
+      Effect.gen(function* () {
+        const labels = yield* Label.Service
+        const { db } = yield* Database.Service
+        const coursework = yield* labels.create({ name: "Coursework" })
+        const databases = yield* labels.create({ name: "Databases", parentID: coursework.id })
+
+        const both = yield* withSession({ title: "both-labels" })
+        yield* db
+          .insert(SessionLabelTable)
+          .values([
+            { session_id: both.id, label_id: coursework.id },
+            { session_id: both.id, label_id: databases.id },
+          ])
+          .run()
+
+        const ids = (yield* SessionNs.use.list({ label: "Coursework" })).map((session) => session.id)
+        expect(ids.filter((id) => id === both.id)).toEqual([both.id])
+      }),
+    { git: true },
+  )
+
+  it.instance(
     "lists sessions after a label is assigned and stops after it is unassigned",
     () =>
       Effect.gen(function* () {
