@@ -1,10 +1,22 @@
 import { describe, expect, test } from "bun:test"
+import type { Session } from "@opencode-ai/sdk/v2"
 import {
   createDialogSessionListQuery,
   loadDialogSessionList,
   parseSessionListCommand,
   parseSessionSearch,
+  selectSessionListResults,
 } from "../../src/component/dialog-session-list"
+
+const session = (id: string, title: string): Session => ({
+  id,
+  slug: id,
+  projectID: "project",
+  directory: "/",
+  title,
+  version: "1",
+  time: { created: 0, updated: 0 },
+})
 
 describe("dialog session list", () => {
   test("requests root sessions for the default browse list", () => {
@@ -82,5 +94,129 @@ describe("dialog session list", () => {
         list: () => Promise.reject(new Error("offline")),
       }),
     ).toBeUndefined()
+  })
+
+  describe("selectSessionListResults", () => {
+    const browse = [session("a", "deploy fix"), session("b", "release notes")]
+    const synced = [...browse, session("current", "current session"), session("pinned", "pinned session")]
+
+    test("falls back from search to browse to synced sessions for an ordinary search", () => {
+      expect(
+        selectSessionListResults({
+          search: "",
+          searchResults: undefined,
+          browseResults: browse,
+          syncSessions: synced,
+          extraIDs: [],
+          deletedIDs: new Set(),
+        }).map((s) => s.id),
+      ).toEqual(["a", "b"])
+
+      expect(
+        selectSessionListResults({
+          search: "",
+          searchResults: undefined,
+          browseResults: undefined,
+          syncSessions: synced,
+          extraIDs: [],
+          deletedIDs: new Set(),
+        }).map((s) => s.id),
+      ).toEqual(["a", "b", "current", "pinned"])
+    })
+
+    test("reintroduces the current and pinned sessions for an ordinary search but not a label search", () => {
+      const withExtras = selectSessionListResults({
+        search: "",
+        searchResults: [session("a", "deploy fix")],
+        browseResults: browse,
+        syncSessions: synced,
+        extraIDs: ["current", "pinned"],
+        deletedIDs: new Set(),
+      }).map((s) => s.id)
+      expect(withExtras.sort()).toEqual(["a", "current", "pinned"].sort())
+
+      const labelSearch = selectSessionListResults({
+        search: "label:Coursework",
+        searchResults: [session("a", "deploy fix")],
+        browseResults: browse,
+        syncSessions: synced,
+        extraIDs: ["current", "pinned"],
+        deletedIDs: new Set(),
+      }).map((s) => s.id)
+      expect(labelSearch).toEqual(["a"])
+    })
+
+    test("uses only server results for a label search, never the browse or synced fallback", () => {
+      expect(
+        selectSessionListResults({
+          search: "label:Coursework",
+          searchResults: undefined,
+          browseResults: browse,
+          syncSessions: synced,
+          extraIDs: ["current", "pinned"],
+          deletedIDs: new Set(),
+        }),
+      ).toEqual([])
+    })
+
+    test("keeps an empty label result empty rather than reintroducing local sessions", () => {
+      expect(
+        selectSessionListResults({
+          search: "label:Coursework",
+          searchResults: [],
+          browseResults: browse,
+          syncSessions: synced,
+          extraIDs: ["current", "pinned"],
+          deletedIDs: new Set(),
+        }),
+      ).toEqual([])
+    })
+
+    test("restores the normal fallback once the label filter is removed", () => {
+      const labeled = selectSessionListResults({
+        search: "label:Coursework",
+        searchResults: [],
+        browseResults: browse,
+        syncSessions: synced,
+        extraIDs: ["current", "pinned"],
+        deletedIDs: new Set(),
+      })
+      const cleared = selectSessionListResults({
+        search: "",
+        searchResults: undefined,
+        browseResults: browse,
+        syncSessions: synced,
+        extraIDs: ["current", "pinned"],
+        deletedIDs: new Set(),
+      })
+      expect(labeled).toEqual([])
+      expect(cleared.map((s) => s.id).sort()).toEqual(["a", "b", "current", "pinned"].sort())
+    })
+
+    test("still applies a combined title filter on top of label results", () => {
+      expect(
+        selectSessionListResults({
+          search: "label:Coursework deploy",
+          searchResults: [session("a", "deploy fix"), session("b", "release notes")],
+          browseResults: browse,
+          syncSessions: synced,
+          extraIDs: [],
+          deletedIDs: new Set(),
+        }).map((s) => s.id),
+      ).toEqual(["a"])
+    })
+
+    test("excludes deleted sessions regardless of filter mode", () => {
+      expect(
+        selectSessionListResults({
+          search: "",
+          searchResults: undefined,
+          browseResults: browse,
+          syncSessions: synced,
+          extraIDs: [],
+          deletedIDs: new Set(["a"]),
+        }).map((s) => s.id),
+      ).toEqual(["b"])
+    })
   })
 })
