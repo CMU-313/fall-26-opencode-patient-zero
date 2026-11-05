@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 60bf295..65c04fc 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -124,7 +124,7 @@ export function normalizeName(name: string): Effect.Effect<string, InvalidNameEr
+     return Effect.fail(
+       new InvalidNameError({ name, reason: `name cannot be longer than ${MAX_NAME_LENGTH} characters` }),
+     )
+-  return Effect.succeed(trimmed)
++  return Effect.succeed(name)
+ }
+ 
+ const layer = Layer.effect(
