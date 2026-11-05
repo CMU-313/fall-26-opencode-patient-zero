@@ -273,6 +273,9 @@ describe("Label properties", () => {
 
               expect({ ...restored, time: undefined }).toEqual({ ...original, time: undefined })
               expect(restored.time.created).toBe(original.time.created)
+              // Added in P5 (Stryker survivor): timestamps must still be real numbers after a round trip.
+              expect(typeof restored.time.created).toBe("number")
+              expect(restored.time.updated).toBeGreaterThanOrEqual(restored.time.created)
               expect(yield* snapshot).toEqual(treeBefore)
               expect(yield* chatTags(sessions)).toEqual(tagsBefore)
             }),
@@ -305,6 +308,49 @@ describe("Label properties", () => {
               expect(exact?._tag).toBe("Label.DuplicateNameError")
               expect(changed?._tag).toBe(exact?._tag)
               expect(yield* snapshot).toEqual(before)
+            }),
+          ),
+      ),
+    )
+  })
+
+  // R4: Label names are trimmed, and two labels under the same parent can't have the same name, ignoring case.
+  // Kind: metamorphic
+  // The flip side of the property above: a label is never a duplicate of itself. Renaming a label to a
+  // case or whitespace variant of its own name (e.g. fixing "homework" to "Homework") must succeed and
+  // store the trimmed variant, with nothing else in the tree changing. Added in P5 to kill mutant H6.
+  test("R4 (metamorphic): renaming a label to a variant of its own name succeeds", async () => {
+    await check(
+      "R4-self",
+      fc.asyncProperty(
+        treeArb
+          .chain((parents) => fc.tuple(fc.constant(parents), fc.integer({ min: 0, max: parents.length - 1 }), nameArb))
+          .chain(([parents, target, name]) =>
+            fc.tuple(fc.constant(parents), fc.constant(target), fc.constant(name), variantArb(name)),
+          ),
+        ([parents, target, name, variant]) =>
+          run(
+            Effect.gen(function* () {
+              yield* reset
+              const labels = yield* Label.Service
+              const ids = yield* buildTree(parents)
+              const id = ids[target]!
+              // Give the target a generated name first, skipping names its siblings already use.
+              const siblings = (yield* snapshot).filter(
+                (l) => l.parentID === (parents[target] === -1 ? undefined : ids[parents[target]!]) && l.id !== id,
+              )
+              fc.pre(!siblings.some((l) => l.name.toLowerCase() === name.toLowerCase()))
+              yield* labels.update(id, { name })
+              const before = yield* snapshot
+
+              const renamed = yield* labels.update(id, { name: variant })
+
+              expect(renamed.name).toBe(variant.trim())
+              // Compare by ID: list() sorts by name, so the rename may move the label in the list.
+              const byId = (labels: ReadonlyArray<{ id: string }>) =>
+                labels.toSorted((a, b) => a.id.localeCompare(b.id))
+              const after = (yield* snapshot).map((l) => (l.id === id ? { ...l, name } : l))
+              expect(byId(after)).toEqual(byId(before))
             }),
           ),
       ),
@@ -444,6 +490,78 @@ describe("Label properties", () => {
               expect(yield* snapshot).toEqual(before)
             }),
           ),
+      ),
+    )
+  })
+
+  // R7 (revised in P4): A rejected label operation fails with a specific error type for the reason, its
+  // message names the problem, and nothing in the label tree changes.
+  // Kind: invariant
+  // Added in P5 to kill Stryker survivors at the 64-character name limit. The generator picks name lengths
+  // right around the limit (55 to 75 characters, plus optional surrounding spaces) because that boundary is
+  // where an off-by-one (> vs >=) or a missing check would hide; the earlier name generator never got past 20.
+  test("R7 (invariant): names over 64 characters are rejected with a clear error, others are kept", async () => {
+    const longNameArb = fc
+      .tuple(
+        fc.integer({ min: 55, max: 75 }),
+        fc.constantFrom("a", "B", "7", "é"),
+        fc.constantFrom("", " ", "  "),
+        fc.boolean(),
+      )
+      .map(([length, char, pad, rename]) => ({ name: pad + char.repeat(length) + pad, length, rename }))
+    await check(
+      "R7-length",
+      fc.asyncProperty(longNameArb, ({ name, length, rename }) =>
+        run(
+          Effect.gen(function* () {
+            yield* reset
+            const labels = yield* Label.Service
+            const existing = yield* labels.create({ name: "Existing" })
+            const before = yield* snapshot
+
+            const attempt = rename ? labels.update(existing.id, { name }) : labels.create({ name })
+            const error = yield* failure(attempt)
+
+            if (length > Label.MAX_NAME_LENGTH) {
+              expect(error?._tag).toBe("Label.InvalidNameError")
+              expect(error?.message).toContain(`${Label.MAX_NAME_LENGTH} characters`)
+              expect(yield* snapshot).toEqual(before)
+            } else {
+              expect(error).toBeUndefined()
+              expect((yield* snapshot).some((l) => l.name === name.trim())).toBe(true)
+            }
+          }),
+        ),
+      ),
+    )
+  })
+
+  // R9 (new in P5): Listing the top level returns exactly the labels with no parent, and listing a label's
+  // children returns exactly its direct children.
+  // Kind: model / oracle
+  // Interview evidence: S-2 (filter and sort chats by label), O-8 ("wrong result whenever the UI tree
+  // desynchronizes from the backend"). Added in P5 because Stryker showed list()'s filtering was untested.
+  test("R9 (model): listing by parent matches the tree", async () => {
+    await check(
+      "R9",
+      fc.asyncProperty(treeArb, (parents) =>
+        run(
+          Effect.gen(function* () {
+            yield* reset
+            const labels = yield* Label.Service
+            const ids = yield* buildTree(parents)
+            const sortIds = (list: ReadonlyArray<{ id: string }>) => list.map((l) => l.id).toSorted()
+
+            const top = yield* labels.list({ parentID: null })
+            expect(sortIds(top)).toEqual(ids.filter((_, i) => parents[i] === -1).toSorted())
+
+            for (const [i, id] of ids.entries()) {
+              const children = yield* labels.list({ parentID: id })
+              expect(sortIds(children)).toEqual(ids.filter((_, j) => parents[j] === i).toSorted())
+            }
+            expect((yield* labels.list()).length).toBe(ids.length)
+          }),
+        ),
       ),
     )
   })
