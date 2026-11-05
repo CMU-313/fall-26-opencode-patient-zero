@@ -15,6 +15,9 @@ import { testEffect } from "./lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Label.node])))
 
+// Generators use short non-empty lowercase names for valid labels, uniqueArray to force multiple-label cases,
+// bounded operation sequences over three sessions and four labels for repeated assignments and removals, and
+// exact or uppercase variants to exercise duplicate-name boundaries.
 const propertyOptions = { numRuns: 50 }
 const labelName = array(constantFrom(...Array.from("abcdefghijklmnopqrstuvwxyz")), {
   minLength: 1,
@@ -153,7 +156,7 @@ describe("Label properties", () => {
   )
 
   // R4: Label assignments should remain and persist across and between sessions.
-  // Kind: model / oracle
+  // Kind: oracle
   it.effect("R4: assigned labels agree with a session-label model after fresh reads", () =>
     Effect.gen(function* () {
       const labels = yield* Label.Service
