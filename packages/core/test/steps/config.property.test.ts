@@ -184,7 +184,8 @@ describe("agent steps config properties", () => {
           })
           expect(agents.bad).toBeUndefined()
           expect(agents.good?.steps).toBe(3)
-          expect(logs.some((line) => line.includes("bad") && line.includes("steps"))).toBe(true)
+          const field = style === "legacy-max" ? "maxSteps" : "steps"
+          expect(logs.some((line) => line.includes("bad") && line.includes(field))).toBe(true)
         }),
         { numRuns: 40 },
       )
