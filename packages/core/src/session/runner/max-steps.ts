@@ -14,3 +14,8 @@ Response must include:
 - Recommendations for what should be done next
 
 Any attempt to use tools is a critical violation. Respond with text ONLY.`
+
+// R5: when an agent has a step limit, tell the model the limit up front and ask for a short
+// numbered plan before any tool call, without waiting for approval (interview evidence C-13, C-14).
+export const stepPlanPrompt = (steps: number) =>
+  `This agent has a limit of ${steps} steps for this task. Before your first tool call, post a short numbered plan of how you will divide the work into steps, then start immediately. Do not wait for the user to approve the plan.`
