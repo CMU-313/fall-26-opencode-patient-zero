@@ -154,6 +154,7 @@ describe("agent steps config properties", () => {
   // error naming the field, instead of loading the agent.
   // Kind: invariant. (Schema level: for every invalid value, decoding fails and the error names steps.)
   test("R2 (schema): every invalid steps value is rejected with an error naming steps", () => {
+    console.log("[property] R2 (schema) ran")
     fc.assert(
       fc.property(invalidSteps, (steps) => {
         let message: string | undefined
@@ -176,6 +177,7 @@ describe("agent steps config properties", () => {
   test(
     "R2 (markdown): an agent file with invalid steps is not loaded and an error naming steps is reported",
     async () => {
+      console.log("[property] R2 (markdown) ran")
       await fc.assert(
         fc.asyncProperty(invalidYamlSteps, markdownStyle, async (stepsYaml, style) => {
           const { agents, logs } = await loadAgents({
@@ -200,6 +202,7 @@ describe("agent steps config properties", () => {
   test(
     "R4: the same steps value in Markdown and in opencode.jsonc gives the same limit",
     async () => {
+      console.log("[property] R4 ran")
       await fc.assert(
         fc.asyncProperty(validSteps, markdownStyle, jsoncStyle, async (steps, md, jsonc) => {
           const { agents } = await loadAgents({ a: markdownFile(String(steps), md) }, jsoncFile(steps, jsonc))

@@ -293,6 +293,7 @@ describe("agent steps runner properties", () => {
   test(
     "R3: the final allowed step has no tools, carries the max-steps prompt, and runs no tools",
     async () => {
+      console.log("[property] R3 ran")
       await fc.assert(
         fc.asyncProperty(stepLimit, script, async (n, steps) => {
           const result = await runAgent(n, steps)
@@ -339,6 +340,7 @@ describe("agent steps runner properties", () => {
   test(
     "R5: adding a step limit adds exactly the plan instruction to the first request",
     async () => {
+      console.log("[property] R5 ran")
       await fc.assert(
         fc.asyncProperty(stepLimit, script, async (n, steps) => {
           const limited = await runAgent(n, steps)
