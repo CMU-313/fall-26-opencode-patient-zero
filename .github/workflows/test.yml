@@ -64,6 +64,21 @@ jobs:
         # contention issue typecheck.yml already caps for tsgo.
         run: GITHUB_ACTIONS=false bun turbo test --concurrency=4
 
+      # The package test scripts use --only-failures, so passing property tests never show up in
+      # the log above. Run the session label properties on their own so every result is printed.
+      - name: Run session label property tests (core)
+        # Run even if an unrelated test above failed, so the property results always reach the log.
+        if: ${{ !cancelled() }}
+        working-directory: packages/core
+        timeout-minutes: 5
+        run: bun test test/label/label.property.test.ts
+
+      - name: Run session label property tests (opencode)
+        if: ${{ !cancelled() }}
+        working-directory: packages/opencode
+        timeout-minutes: 5
+        run: bun test --timeout 30000 test/label/label.property.test.ts
+
       - name: Check generated client
         timeout-minutes: 5
         working-directory: packages/client

@@ -154,7 +154,10 @@ const layer = Layer.effect(
         .where(
           and(
             input.parentID === null ? isNull(LabelTable.parent_id) : eq(LabelTable.parent_id, input.parentID),
-            sql`lower(${LabelTable.name}) = ${input.name.toLowerCase()}`,
+            // Fold case with SQLite's lower() on both sides, exactly like label_parent_name_unique_idx.
+            // JavaScript's toLowerCase() also folds non-ASCII letters, so mixing the two let an exact
+            // duplicate like "Ünïcode" past this check and into a unique-index crash.
+            sql`lower(${LabelTable.name}) = lower(${input.name})`,
             input.exclude ? ne(LabelTable.id, input.exclude) : undefined,
           ),
         )
