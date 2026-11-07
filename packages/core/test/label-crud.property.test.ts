@@ -22,8 +22,10 @@ afterAll(() => runtime.dispose())
 type Services = Label.Service | Database.Service
 const run = <A, E>(effect: Effect.Effect<A, E, Services>) => runtime.runPromise(effect)
 
-// Keeps CI fast (the unit job targets ~5 minutes) while still trying many trees per property.
-const RUNS = { numRuns: 60 }
+// Keeps CI fast while still trying many trees per property. The seed is fixed so every run (local, CI and
+// Stryker) generates the same cases, which makes mutation results reproducible. Recorded in traceability/dylany.md.
+const SEED = 3132026
+const RUNS = { numRuns: 60, seed: SEED }
 
 /**
  * Runs a property and prints one line when it passes. The core package runs `bun test --only-failures`,
@@ -31,7 +33,7 @@ const RUNS = { numRuns: 60 }
  */
 const check = async (name: string, property: fc.IAsyncPropertyWithHooks<any>) => {
   await fc.assert(property, RUNS)
-  console.log(`[label property] ${name}: passed ${RUNS.numRuns} generated cases`)
+  console.log(`[label property] ${name}: passed ${RUNS.numRuns} generated cases (seed ${SEED})`)
 }
 
 // ---------- Generators ----------
