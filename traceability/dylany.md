@@ -15,7 +15,7 @@ Interview IDs (S-, C-, O-) refer to my Project 3 workbook notes.
 | R3 | S-3, C-3, O-4, O-5 | Renaming a label and then renaming it back restores it: same ID, name, parent, creation time, nested labels and tagged chats. Only its last-updated time may change. | Rename `Databases` to `SQL`, then back to `Databases`: the label, its nested labels and the chats tagged with it match their state before the first rename. | **Yes** (see below) | For any tree, any chat tagging, any label and any new name that doesn't collide with a sibling: rename then rename back gives the original label (ignoring last-updated time), the same whole tree and the same chat tags. | Round-trip | "R3 (round-trip): rename then rename back restores the label" | H4; Stryker: `fromRow` dropping timestamps (after P5 fix) |
 | R4 | S-4, C-4, O-6 | Label names are trimmed, and two labels under the same parent can't have the same name, ignoring case. | After creating `Homework`, creating `homework`, or `Homework` with extra spaces before and after, fails with a duplicate-name error, and only one `Homework` label exists. | No | For any name (including non-ASCII letters) and any case/whitespace variant of it, creating the variant gives the same result as creating the exact name again: `DuplicateNameError`, with the tree unchanged. Checked at the top level and under a parent. | Metamorphic | "R4 (metamorphic): case and whitespace variants of a sibling name are duplicates"; P5: "R4 (metamorphic): renaming a label to a variant of its own name succeeds" | H3, H6 (H6 after P5 fix) |
 | R5 | O-7 | The same name is allowed under different parents. | Creating `Notes` under `Math` and `Notes` under `Art` both succeed, and listing shows `Math/Notes` and `Art/Notes`. | No | For any tree and any name, creating that name under every label in the tree always succeeds, with each copy under its own parent. | Invariant | "R5 (invariant): one name can exist under every different parent" | None of the hand-written mutants (no mutant targeted R5) |
-| R6 | O-2 | A label can never be moved under itself or one of its own nested labels. | With `School/Databases`, moving `School` under `Databases` fails with an error, and the tree is unchanged. | No | For any tree and any (label, destination) pair, the move fails with `CycleError` and leaves the tree unchanged exactly when a model says the destination is in the label's own subtree; every other move succeeds. | Model / oracle | "R6 (model): moves into a label's own subtree are rejected, all others succeed" | H2 |
+| R6 | O-2 | A label can never be moved under itself or one of its own nested labels. | With `School/Databases`, moving `School` under `Databases` fails with an error, and the tree is unchanged. | No | For any tree and any (label, destination) pair, the move fails with `CycleError` and leaves the tree unchanged exactly when a model says the destination is in the label's own subtree; every other move succeeds. | Model / oracle | "R6 (model): moves into a label's own subtree are rejected, all others succeed" | H2; X1 (agent failure case, after P5 fix) |
 | R7 | S-5, C-5, C-8, O-9 | A rejected label operation fails with a specific error for the reason (not found, invalid name, duplicate name, or cycle), its message names the label involved, and nothing in the label tree changes. | Creating a duplicate `School` returns `DuplicateNameError` whose message includes "School", and no label is created. | **Yes** (see below) | For any tree and any of six invalid operations (duplicate create, missing parent, empty name, move under itself, delete missing, rename missing), the error has the expected type, its message names the label or ID, and the whole tree is unchanged. | Invariant | "R7 (invariant): rejected operations explain why and change nothing"; P5: "R7 (invariant): names over 64 characters are rejected with a clear error, others are kept" | H2, H5; Stryker: name-length limit mutants (after P5 fix) |
 | R8 | C-2 | No label operation other than assigning or unassigning changes which labels a chat has. | Creating, renaming or moving labels leaves every chat's set of labels exactly the same. | **Yes** (see below) | For any tree, any chat tagging, and any sequence of up to 8 create/rename/move operations (valid or rejected), every chat has the same set of labels afterward. | Invariant | "R8 (invariant): creating, renaming and moving labels never changes a chat's labels" | H2 (by timing out: the self-parented label makes later moves loop forever) |
 | R9 | S-2, O-8 | Listing the top level returns exactly the labels with no parent, and listing a label returns exactly its direct children. | With `School/Math`, `School/Art` and `Personal`, listing the top level returns `School` and `Personal`, and listing `School` returns `Math` and `Art`. | **New in P5** | For any tree, the top-level list and every label's child list match a model computed from the parent-index array. | Model / oracle | "R9 (model): listing by parent matches the tree" | None of the hand-written mutants; Stryker: all four `list()` filter mutants |
@@ -103,7 +103,58 @@ Hand-written mutants come from the requirements, so they test whether each prope
 
 ## Agent failure case (P5)
 
-_To do: none of my properties were written by opencode, so I'll ask opencode to write one for a requirement and run my mutants against it. Then I'll record the transcript excerpt, the `/share` link, the surviving mutant, why the property was too weak, and the strengthened version with evidence it kills the mutant._
+None of my P4 properties came from opencode (I used Claude), so I asked **opencode** (v1.19.5, model Big Pickle) to write a property for **R6**. Its strengthened version is in [`packages/core/test/label-agent.property.test.ts`](../packages/core/test/label-agent.property.test.ts).
+
+**Share link:** _paste the `/share` link here_
+
+**Transcript excerpt** (screenshot: _add it here_):
+
+> **Me:** Write a fast-check property test for this requirement of the Label service in packages/core/src/label.ts: "A label can never be moved under itself or one of its own nested labels." Put it in a new file packages/core/test/label-agent.property.test.ts. Look at packages/core/test/label.test.ts for how to set up the service in a test.
+>
+> **opencode:** → Read packages/core/src/label.ts, packages/core/test/label.test.ts, packages/core/test/label-crud.property.test.ts … Wrote packages/core/test/label-agent.property.test.ts … `bun test test/label-agent.property.test.ts`: 1 pass, 0 fail … "Created packages/core/test/label-agent.property.test.ts. It generates valid label trees, moves one label under every label in its own subtree (including itself), asserts each fails with Label.CycleError and leaves the tree unchanged, then verifies a move outside the subtree still succeeds. Test passes (60 cases) and typecheck is clean."
+
+The core of what it wrote:
+
+```ts
+for (const destination of subtree) {
+  const error = yield* failure(labels.update(ids[moved]!, { parentID: ids[destination]! }))
+  expect(error?._tag).toBe("Label.CycleError")
+}
+expect(yield* snapshot).toEqual(before)
+
+const outside = ids.map((_, i) => i).filter((i) => !subtree.has(i))
+if (!outside.length) return
+const movedLabel = yield* labels.update(ids[moved]!, { parentID: ids[outside[0]!]! })
+expect(movedLabel.parentID).toBe(ids[outside[0]!])
+```
+
+**Surviving mutant:** [`mutants/dylany/X1-agent.patch`](../mutants/dylany/X1-agent.patch), in `update`:
+
+```diff
+-      const parentID = input.parentID === undefined ? current.parent_id : input.parentID
++      const parentID = input.parentID ?? current.parent_id
+```
+
+This looks like an innocent cleanup, since `??` is the idiomatic way to write "default to the current value". But `??` treats `null` the same as "not given", so moving a label to the top level (`parentID: null`) silently does nothing: no error, and the label stays under its old parent. I ran all my mutants against opencode's property. It killed H2 (the R6 mutant), and X1 survived.
+
+**Why the property was too weak:** a generator that never reaches the bug, plus a weak check on the "allowed" side.
+- It only ever tries one legal move, to `outside[0]`, the lowest-index label outside the subtree. In almost every generated tree that's label 0, a top-level label. Its own comment says it checks that "a move to a label outside its subtree must still succeed", but in practice it samples one destination.
+- It never moves a label to the top level (`parentID: null`), which is the main legal way out of a nesting and the exact input X1 breaks.
+- After the legal move it only checks the moved label's `parentID`. It never checks that the rest of the tree is untouched.
+
+It also copied most of its setup from my existing `label-crud.property.test.ts`, so it inherited my blind spot: **my own R6 property also let X1 survive**, because its destinations were always real labels.
+
+**Strengthened version:** for every destination in the tree **plus the top level**, rebuild the tree and compare the move to the model. A destination inside the subtree must be rejected with `CycleError` and change nothing. Any other destination must succeed, setting exactly the requested parent (or none) and leaving every other label as it was. I made the same fix to my own R6 property in `label-crud.property.test.ts` (destination `-1` means "top level").
+
+**Evidence it kills the mutant** (seed `3132026`):
+
+| Property | Real code | With X1 applied |
+| --- | --- | --- |
+| opencode's original R6 | passes | **passes (X1 survives)** |
+| Strengthened `label-agent.property.test.ts` | passes | **fails**, counterexample `[[[-1,0,0,0],1]]`: moving label 1 to the top level left `parentID` as label 0 instead of `undefined` |
+| My strengthened R6 in `label-crud.property.test.ts` | passes | **fails**, counterexample `[[[-1,0,-1,0,1,2,2],1,-1]]` |
+
+Stryker never generated X1, because it doesn't swap `x === undefined ? a : x` for `x ?? a`. So this bug was only found by thinking about how a developer might "clean up" the code.
 
 ## Red team (P5)
 
