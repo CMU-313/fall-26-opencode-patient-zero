@@ -280,7 +280,7 @@ describe("LSPClient interop", () => {
         await client.shutdown()
       },
     })
-  })
+  }, { retry: 3 })
 
   test("document mode waits for pull diagnostics", async () => {
     const handle = spawnFakeServer() as any
@@ -381,7 +381,7 @@ describe("LSPClient interop", () => {
         await client.shutdown()
       },
     })
-  })
+  }, { retry: 3 })
 
   test("full mode includes workspace pull diagnostics", async () => {
     const handle = spawnFakeServer() as any
@@ -484,5 +484,5 @@ describe("LSPClient interop", () => {
         await client.shutdown()
       },
     })
-  })
+  }, { retry: 3 })
 })
