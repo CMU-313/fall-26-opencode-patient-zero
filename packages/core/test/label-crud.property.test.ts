@@ -387,8 +387,9 @@ describe("Label properties", () => {
 
   // R6: A label can never be moved under itself or one of its own nested labels.
   // Kind: model / oracle
-  // For any tree and any move, the move is rejected with CycleError (tree unchanged) exactly when the
-  // model says the destination is inside the label's own subtree; every other move succeeds.
+  // For any tree and any move (including to the top level), the move is rejected with CycleError (tree
+  // unchanged) exactly when the model says the destination is inside the label's own subtree; every other
+  // move succeeds.
   test("R6 (model): moves into a label's own subtree are rejected, all others succeed", async () => {
     await check(
       "R6",
@@ -397,7 +398,9 @@ describe("Label properties", () => {
           fc.tuple(
             fc.constant(parents),
             fc.integer({ min: 0, max: parents.length - 1 }),
-            fc.integer({ min: 0, max: parents.length - 1 }),
+            // -1 means "move to the top level" (parentID: null). Added in P5: without it, mutant X1, which
+            // ignores a null parentID, survived.
+            fc.integer({ min: -1, max: parents.length - 1 }),
           ),
         ),
         ([parents, moved, destination]) =>
@@ -407,16 +410,17 @@ describe("Label properties", () => {
               const labels = yield* Label.Service
               const ids = yield* buildTree(parents)
               const before = yield* snapshot
-              const wouldCycle = modelSubtree(parents, moved).has(destination)
+              const wouldCycle = destination !== -1 && modelSubtree(parents, moved).has(destination)
+              const parentID = destination === -1 ? null : ids[destination]!
 
-              const error = yield* failure(labels.update(ids[moved]!, { parentID: ids[destination]! }))
+              const error = yield* failure(labels.update(ids[moved]!, { parentID }))
 
               if (wouldCycle) {
                 expect(error?._tag).toBe("Label.CycleError")
                 expect(yield* snapshot).toEqual(before)
               } else {
                 expect(error).toBeUndefined()
-                expect((yield* labels.get(ids[moved]!)).parentID).toBe(ids[destination]!)
+                expect((yield* labels.get(ids[moved]!)).parentID).toBe(parentID ?? undefined)
               }
             }),
           ),
