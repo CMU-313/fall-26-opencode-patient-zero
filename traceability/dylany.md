@@ -105,9 +105,13 @@ Hand-written mutants come from the requirements, so they test whether each prope
 
 None of my P4 properties came from opencode (I used Claude), so I asked **opencode** (v1.19.5, model Big Pickle) to write a property for **R6**. Its strengthened version is in [`packages/core/test/label-agent.property.test.ts`](../packages/core/test/label-agent.property.test.ts).
 
-**Share link:** _paste the `/share` link here_
+**Share link:** none. This opencode build has no `/share` command (typing it shows "No matching items"), so the screenshot and the excerpt below are the record.
 
-**Transcript excerpt** (screenshot: _add it here_):
+**Screenshot of the session:**
+
+![opencode session writing the R6 property](images/dylany-opencode-transcript.png)
+
+**Transcript excerpt:**
 
 > **Me:** Write a fast-check property test for this requirement of the Label service in packages/core/src/label.ts: "A label can never be moved under itself or one of its own nested labels." Put it in a new file packages/core/test/label-agent.property.test.ts. Look at packages/core/test/label.test.ts for how to set up the service in a test.
 >
