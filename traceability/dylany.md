@@ -162,4 +162,6 @@ Stryker never generated X1, because it doesn't swap `x === undefined ? a : x` fo
 
 ## Red team (P5)
 
-_Optional extra credit. To be filled in if I sign up._
+**Attack:** I red-teamed Anjali Dadlani (anjalid, T3A Party), permission rules, PR #27 at commit `83ef6d4`. My three mutants (RT1 for R1, RT2 for R3, RT3 for R5) and why each should survive are in [`mutants/dylany/redteam/`](../mutants/dylany/redteam/).
+
+**Defend:** _To be filled in once my red-teamer posts their mutants._
