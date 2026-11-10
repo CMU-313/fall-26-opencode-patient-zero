@@ -359,10 +359,59 @@ describe("Label properties", () => {
     )
   })
 
+  // R4: Label names are trimmed, and two labels under the same parent can't have the same name, ignoring case.
+  // Kind: metamorphic
+  // Moving a label must follow the same duplicate rule as creating one: moving it next to a label whose name
+  // is a case or whitespace variant of its own must fail with DuplicateNameError and leave the tree unchanged.
+  // Added in P5 (red team, Cynthia Cao's mutant 1): no property moved a label next to a same-named label, so a
+  // duplicate check that looked at the label's old parent instead of its new one survived.
+  test("R4 (metamorphic): moving a label next to a variant of its name is a duplicate", async () => {
+    await check(
+      "R4-move",
+      fc.asyncProperty(
+        treeArb
+          .chain((parents) =>
+            fc.tuple(
+              fc.constant(parents),
+              fc.integer({ min: 0, max: parents.length - 1 }),
+              fc.integer({ min: -1, max: parents.length - 1 }),
+              nameArb,
+            ),
+          )
+          .chain(([parents, moved, destination, name]) =>
+            fc.tuple(fc.constant(parents), fc.constant(moved), fc.constant(destination), fc.constant(name), variantArb(name)),
+          ),
+        ([parents, moved, destination, name, variant]) =>
+          run(
+            Effect.gen(function* () {
+              // Only legal moves to a different parent, so a cycle or a no-op can't explain the result.
+              fc.pre(destination !== parents[moved])
+              fc.pre(destination === -1 || !modelSubtree(parents, moved).has(destination))
+              yield* reset
+              const labels = yield* Label.Service
+              const ids = yield* buildTree(parents)
+              const parentID = destination === -1 ? undefined : ids[destination]!
+              yield* labels.update(ids[moved]!, { name })
+              yield* labels.create({ name: variant, parentID })
+              const before = yield* snapshot
+
+              const error = yield* failure(labels.update(ids[moved]!, { parentID: parentID ?? null }))
+
+              expect(error?._tag).toBe("Label.DuplicateNameError")
+              expect(yield* snapshot).toEqual(before)
+            }),
+          ),
+      ),
+    )
+  })
+
   // R5: The same name is allowed under different parents.
   // Kind: invariant
   // For any name and any set of distinct parents, creating that name under each parent always succeeds,
-  // and each copy sits under its own parent.
+  // and each copy sits under its own parent. The top level counts as a parent too, and it is created last,
+  // so the top-level duplicate check runs while copies exist elsewhere. Added in P5 (red team, Cynthia
+  // Cao's mutant 2): before, the top level was never used, so a duplicate check that looked at every label
+  // instead of only top-level ones survived.
   test("R5 (invariant): one name can exist under every different parent", async () => {
     await check(
       "R5",
@@ -377,7 +426,10 @@ describe("Label properties", () => {
               expect(copy.parentID).toBe(id)
               expect(copy.name).toBe(name)
             }
-            const copies = (yield* snapshot).filter((label) => label.name === name)
+            const top = yield* labels.create({ name })
+            expect(top.parentID).toBeUndefined()
+            expect(top.name).toBe(name)
+            const copies = (yield* snapshot).filter((label) => label.name === name && label.parentID !== undefined)
             expect(copies.map((label) => label.parentID).toSorted()).toEqual([...ids].toSorted())
           }),
         ),
@@ -440,6 +492,8 @@ describe("Label properties", () => {
       "cycle",
       "deleteMissing",
       "renameMissing",
+      // Added in P5 (red team, Cynthia Cao's mutant 3): moving a label under a parent that doesn't exist.
+      "moveMissingParent",
     )
     await check(
       "R7",
@@ -481,6 +535,11 @@ describe("Label properties", () => {
                 deleteMissing: { effect: labels.remove(missing), tag: "Label.NotFoundError", mentions: missing },
                 renameMissing: {
                   effect: labels.update(missing, { name: "Renamed" }),
+                  tag: "Label.NotFoundError",
+                  mentions: missing,
+                },
+                moveMissingParent: {
+                  effect: labels.update(label.id, { parentID: missing }),
                   tag: "Label.NotFoundError",
                   mentions: missing,
                 },
