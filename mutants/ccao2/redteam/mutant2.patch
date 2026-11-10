@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 60bf295..ba354a8 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -153,7 +153,7 @@ const layer = Layer.effect(
+         .from(LabelTable)
+         .where(
+           and(
+-            input.parentID === null ? isNull(LabelTable.parent_id) : eq(LabelTable.parent_id, input.parentID),
++            input.parentID ? eq(LabelTable.parent_id, input.parentID) : undefined,
+             input.exclude ? ne(LabelTable.id, input.exclude) : undefined,
+           ),
+         )
