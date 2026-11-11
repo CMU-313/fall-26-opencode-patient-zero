@@ -34,8 +34,11 @@ NA; All requirements can be built as written. They are all feasible, have no con
 
 ## Stryker comparison
   
-**Mutation score:** 59.46% (111 mutants: 64 killed, 2 timed out, 45 survived)
-**Report:** mutants/jarretth/mutation.html
+**Mutation score:** 59.46% (111 mutants: 64 killed, 2 timed out, 45 survived)  
+
+**Report:** mutants/jarretth/mutation.html  
+  
+**fast-check seed:** 42 (set at the top of `packages/core/test/label.property.test.ts`)
 
 ### Which of your hand-written mutants did Stryker never generate? Why not?
 
@@ -56,7 +59,22 @@ I can see the value in both of these approaches. My approach finds bugs in logic
 
 ## Strengthening and Equivalent Mutants
 
-**Final Mutation score:** 90.99% (111 mutants: 99 killed, 2 timed out, 10 survived)
+**Final Mutation score:** 90.99% (111 mutants: 99 killed, 2 timed out, 10 survived)  
+
+**Final Mutation score with equivalent mutants excluded:** 100% (All 10 survivors are the equivalent mutants listed below)
+
+### How survivors were killed
+
+All survivors were killed by improving the properties (better generators, stronger assertions, and one new property for R1). No example-based tests were added.
+
+| Property | Improvement |
+|---|---|
+| R1 (moving) | Before the real move, A is moved under a label that already has a child with A's name in lowercase; this must fail with `DuplicateNameError` and leave A unchanged. The move must keep A's creation time, and adding A to the parent it already has must change nothing, not even its update time. |
+| R1 (renaming, new property) | Renames A, on its own or together with a move, and checks that only the name changes. Renaming A to its sibling's name must fail with `DuplicateNameError`. |
+| R2 | The generator also tags 0–3 conversations with B, which are included in the before/after snapshot and must not gain A. |
+| R3 | The generator adds a blank or over-long name that `create` must reject with `InvalidNameError`. The created label must appear in the top-level list, a second top-level label with the same name must be rejected, `remove` must return exactly the label's and its children's IDs, and the deleted label can no longer be used as a parent. |
+| R4 | After the order comparison, moving the parent under itself, its child, or its grandchild must fail with `CycleError`, and the parent must stay where it was. |
+| R5 | The generator can also assign the label to a conversation that doesn't exist, which must fail with `SessionNotFoundError` and not be counted. |
 
 ### Equivalent mutants
 
