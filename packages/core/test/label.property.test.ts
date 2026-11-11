@@ -13,6 +13,8 @@ import { SessionSchema } from "@opencode-ai/core/session/schema"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { testEffect } from "./lib/effect"
 
+fc.configureGlobal({ seed: 42 })
+
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Label.node])))
 
 // Label names: arbitrary unicode (which includes "/", the label path separator), plus the edges the service
