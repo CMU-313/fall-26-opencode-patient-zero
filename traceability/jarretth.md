@@ -20,3 +20,13 @@ Test File: `packages/core/test/label.property.test.ts`
 
 | ID | Original requirement (P3) | Revised requirement | Why it changed |
 NA; All requirements can be built as written. They are all feasible, have no conflicts and can be written as a check.
+
+## Mutants
+
+| ID | Requirement Targeted | Change | Predicted Killer | Actual Result |
+|---|---|---|---|---|
+| H1 | R1 | label.ts: Adding a label as a child to another label will change its name to lowercase. | Label's name should not change after being added as a child (R1) | d |
+| H2 | R2 | label.ts: When adding a label A as a child to label B, conversations with label B will have label A added to them. | Labeled conversations should not change or have more/less labels if its label is added as a children (R2) | d |
+| H3 | R3 | label.ts: Deleting a label with children will delete the children but not the label itself. | Creating a label and then deleting it removes that label from the database without affecting any of its conversations (R3) | d |
+| H4 | R4 | label.ts: When adding a label as a child, only the first label added as a child is actually attached and later labels added are left in unattached. | Changing order of how multiple labels are added as children should not change output (R4) | d |
+| H5 | R5 | label.ts: Assigning a label twice crashes instead of doing nothing. | Listing conversations by a label returns exactly the conversations assigned that label, regardless of how many other conversations are unlabeled, carry a different label, or had the label assigned twice (R5) | d |
