@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index b1bdf0c..fa0e077 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -118,7 +118,7 @@ function fromRow(row: Row): Info {
+ 
+ /** Trims the name and rejects empty or overly long names. */
+ export function normalizeName(name: string): Effect.Effect<string, InvalidNameError> {
+-  const trimmed = name.trim()
++  const trimmed = name.trimEnd()
+   if (!trimmed) return Effect.fail(new InvalidNameError({ name, reason: "name cannot be empty" }))
+   if (trimmed.length > MAX_NAME_LENGTH)
+     return Effect.fail(
