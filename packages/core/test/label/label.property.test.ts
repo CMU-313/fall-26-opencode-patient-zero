@@ -15,8 +15,7 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Label.node])))
 
-// Every property run uses fresh session IDs and deletes its labels afterwards,
-// so runs never see each other's data even though they share one database.
+fc.configureGlobal({ seed: 42 })
 let runs = 0
 
 /*
@@ -69,6 +68,12 @@ describe("session label properties", () => {
                 yield* Effect.forEach(input.initial, (index) =>
                   labels.assign({ sessionID: setup.session, labelID: setup.ids[index] }),
                 )
+                // A second session holds every label, so the round trip is also checked not to
+                // leak into other sessions (removing the label from one session must not remove
+                // it from another).
+                const other = yield* insertSession(`ses_prop_${runs++}`, 1)
+                yield* Effect.forEach(setup.ids, (labelID) => labels.assign({ sessionID: other, labelID }))
+                const otherBefore = yield* labelIDs(labels, other)
                 // Only a label the session doesn't have counts for this half of R2.
                 const fresh = setup.ids.find((_, index) => !input.initial.includes(index))
                 if (!fresh) return
@@ -78,6 +83,7 @@ describe("session label properties", () => {
                 yield* labels.unassign({ sessionID: setup.session, labelID: fresh })
 
                 expect(yield* labelIDs(labels, setup.session)).toEqual(before)
+                expect(yield* labelIDs(labels, other)).toEqual(otherBefore)
               }).pipe(Effect.ensuring(cleanup(labels))),
             ),
           ),
@@ -159,7 +165,9 @@ describe("session label properties", () => {
   // Adding whitespace around a name must not change which label it means: when the label
   // already exists, the padded name is rejected as a duplicate instead of creating a second one.
   // Names include 64-character ones, so padding pushes the raw input past the length limit and
-  // the property also checks that trimming happens before the length check.
+  // the property also checks that trimming happens before the length check. The label is either
+  // top-level or nested under a parent, because the duplicate check queries siblings differently
+  // for the two cases (`parent_id IS NULL` vs `parent_id = ?`).
   it.live("R3: a name with extra spaces around it never creates a second label", () =>
     Effect.gen(function* () {
       const labels = yield* Label.Service
@@ -167,16 +175,16 @@ describe("session label properties", () => {
       const name = fc.oneof(word, fc.stringMatching(/^[a-z]{64}$/))
       yield* Effect.promise(() =>
         fc.assert(
-          fc.asyncProperty(name, padding, padding, (base, left, right) =>
+          fc.asyncProperty(name, padding, padding, fc.boolean(), (base, left, right, topLevel) =>
             Effect.runPromiseWith(context)(
               Effect.gen(function* () {
-                const root = yield* labels.create({ name: `root-${runs++}` })
-                const existing = yield* labels.create({ name: base, parentID: root.id })
+                const parentID = topLevel ? undefined : (yield* labels.create({ name: `root-${runs++}` })).id
+                const existing = yield* labels.create({ name: base, parentID })
 
-                const error = yield* Effect.flip(labels.create({ name: `${left}${base}${right}`, parentID: root.id }))
+                const error = yield* Effect.flip(labels.create({ name: `${left}${base}${right}`, parentID }))
                 expect(error._tag).toBe("Label.DuplicateNameError")
 
-                const children = yield* labels.list({ parentID: root.id })
+                const children = yield* labels.list({ parentID: parentID ?? null })
                 expect(children.map((label) => label.id)).toEqual([existing.id])
                 expect(children[0].name).toBe(base.trim())
               }).pipe(Effect.ensuring(cleanup(labels))),

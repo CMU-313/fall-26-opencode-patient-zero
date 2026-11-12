@@ -19,6 +19,9 @@ const it = testEffect(
   ]),
 )
 
+// Same fixed seed as the core property file, so hand-written mutant results are reproducible.
+fc.configureGlobal({ seed: 42 })
+
 afterEach(async () => {
   await disposeAllInstances()
 })
@@ -29,7 +32,8 @@ afterEach(async () => {
  * A world is 1-6 sessions, each holding any subset of a 3-label pool. Three labels is few
  * enough that sessions constantly share labels, hold several, or hold none, which are the
  * cases R4's "every session ... and no session that doesn't" is about. The filter label is
- * drawn from the same pool, so some runs filter by a label no session has.
+ * drawn from the same pool, so some runs filter by a label no session has, plus "dinner",
+ * a name no label has at all, so the "no matching label" path is reached too.
  *
  * Session times are distinct fixed dates (Nov 2026, minute resolution) rather than "now",
  * so results never depend on when the test runs, and no two sessions tie on time.
@@ -44,7 +48,7 @@ const world = fc
           fc.record({ updated: fc.constant(Date.UTC(2026, 10, 1) + minute * 60_000), labels: fc.subarray(pool) }),
         ),
       ),
-      filter: fc.constantFrom(...pool),
+      filter: fc.constantFrom(...pool, "dinner"),
       extra: fc.record({ session: fc.nat(), label: fc.constantFrom(...pool) }),
     }),
   )
