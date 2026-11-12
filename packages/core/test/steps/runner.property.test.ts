@@ -43,11 +43,16 @@ import { ReferenceGuidance } from "@opencode-ai/core/reference/guidance"
 import { Location } from "@opencode-ai/core/location"
 import { Effect, Layer, Schema, Stream } from "effect"
 
+fc.configureGlobal({ seed: 42 })
+
 // ---------- Harness (trimmed copy of test/session-runner.test.ts) ----------
 
 const requests: LLMRequest[] = []
 const executions: string[] = []
 let responses: LLMEvent[][] = []
+// A second user message admitted while the fake model streams request number `at` (1-based),
+// modelling a user who types again mid-run. Set per case by runAgent.
+let midRunInput: { at: number; admit: Effect.Effect<void> } | undefined
 
 const client = Layer.succeed(
   LLMClient.Service,
@@ -55,7 +60,9 @@ const client = Layer.succeed(
     prepare: () => Effect.die("unused"),
     stream: ((request: LLMRequest) => {
       requests.push(request)
-      return Stream.fromIterable(responses.shift() ?? [])
+      const events = Stream.fromIterable(responses.shift() ?? [])
+      if (midRunInput?.at !== requests.length) return events
+      return Stream.fromEffect(midRunInput.admit).pipe(Stream.flatMap(() => events))
     }) as unknown as LLMClientShape["stream"],
     generate: () => Effect.die("unused"),
   }),
@@ -217,9 +224,21 @@ const textStep = (step: number): LLMEvent[] => [
   LLMEvent.finish({ reason: "stop" }),
 ]
 
+type Delivery = "steer" | "queue"
+type RunOptions = {
+  // Agent the session is bound to. A name that was never loaded models an agent whose file was
+  // rejected (R2): the runner sees no agent info at all.
+  agent?: string
+  // How the first prompt is delivered.
+  first?: Delivery
+  // A second prompt the user sends while request number `at` is streaming.
+  second?: { at: number; delivery: Delivery }
+}
+
 // Runs one prompt on a fresh session with the given step limit (undefined = no limit) and
-// model script. Returns every request the runner sent and every tool that actually executed.
-const runAgent = (steps: number | undefined, script: readonly ModelStep[]) =>
+// model script. Returns every request the runner sent, every tool that actually executed, and
+// every tool failure recorded in the session history.
+const runAgent = (steps: number | undefined, script: readonly ModelStep[], options: RunOptions = {}) =>
   Effect.gen(function* () {
     requests.length = 0
     executions.length = 0
@@ -241,6 +260,7 @@ const runAgent = (steps: number | undefined, script: readonly ModelStep[]) =>
         directory: "/project",
         title: "test",
         version: "test",
+        ...(options.agent === undefined ? {} : { agent: options.agent }),
       })
       .onConflictDoNothing()
       .run()
@@ -253,9 +273,33 @@ const runAgent = (steps: number | undefined, script: readonly ModelStep[]) =>
       }),
     )
     const session = yield* SessionV2.Service
-    yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Read the chain files" }), resume: false })
+    const second = options.second
+    midRunInput =
+      second === undefined
+        ? undefined
+        : {
+            at: second.at,
+            admit: session
+              .prompt({
+                sessionID,
+                prompt: Prompt.make({ text: "Also check the README" }),
+                delivery: second.delivery,
+                resume: false,
+              })
+              .pipe(Effect.asVoid, Effect.orDie),
+          }
+    yield* session.prompt({
+      sessionID,
+      prompt: Prompt.make({ text: "Read the chain files" }),
+      delivery: options.first,
+      resume: false,
+    })
     yield* session.resume(sessionID)
-    return { requests: [...requests], executions: [...executions] }
+    const history = yield* session.history({ sessionID, limit: 10_000 })
+    const toolFailures = history.events.flatMap((event) =>
+      event.type === "session.next.tool.failed" ? [{ callID: event.data.callID, message: event.data.error.message }] : [],
+    )
+    return { requests: [...requests], executions: [...executions], toolFailures }
   }).pipe(Effect.scoped, Effect.provide(layer), Effect.runPromise)
 
 const systemText = (request: LLMRequest | undefined) => (request?.system ?? []).map((part) => part.text).join("\n")
@@ -283,6 +327,36 @@ const script = fc.array(modelStep, { minLength: 8, maxLength: 8 })
 
 // The phrase the R5 plan instruction must contain (see src/session/runner/max-steps.ts).
 const PLAN_PHRASE = "numbered plan"
+
+const delivery = fc.constantFrom<Delivery>("steer", "queue")
+
+// Oracle for R3 (budget): the expected sequence of provider turns when a second message arrives
+// during turn `second.at`. For each turn: is it the final allowed step, and how many tool calls run.
+//  - The budget counter starts at 1 and the turn whose counter reaches N is final (no tools run).
+//  - A run continues after a turn only if tools ran, or a steered message is waiting.
+//  - A waiting steered message is picked up at the start of the next turn: counter back to 1.
+//  - A queued message waits until the run would stop, then starts a new run at counter 1.
+function expectedTurns(n: number, steps: readonly ModelStep[], second: { at: number; delivery: Delivery }) {
+  const turns: { final: boolean; calls: number }[] = []
+  const pending = { steer: false, queue: false }
+  const state = { counter: 1, more: true }
+  while (state.more) {
+    while (state.more) {
+      const final = state.counter >= n
+      const step = steps[turns.length]
+      const calls = step?.kind === "tool" && !final ? step.calls : 0
+      turns.push({ final, calls })
+      if (turns.length === second.at) pending[second.delivery] = true
+      state.more = calls > 0 || pending.steer
+      state.counter = pending.steer ? 1 : state.counter + 1
+      pending.steer = false
+    }
+    state.more = pending.queue
+    state.counter = 1
+    pending.queue = false
+  }
+  return turns
+}
 
 describe("agent steps runner properties", () => {
   // R3 (revised in P4): On the final allowed step, the model request offers no tools
@@ -324,8 +398,91 @@ describe("agent steps runner properties", () => {
             }
           })
           expect([...result.executions].sort()).toEqual([...expectedExecutions].sort())
+          // A tool call the model attempts anyway on step N is not run, and the session records
+          // why (S-15: the user needs to see why it stopped).
+          const finalStep = expectedRequests === n ? steps[n - 1] : undefined
+          const blockedCalls =
+            finalStep?.kind === "tool" ? Array.from({ length: finalStep.calls }, (_, c) => `call-${n}-${c}`) : []
+          blockedCalls.forEach((callID) => {
+            const failure = result.toolFailures.find((f) => f.callID === callID)
+            expect(failure?.message).toMatch(/maximum.*steps/i)
+          })
         }),
         { numRuns: 30 },
+      )
+    },
+    120_000,
+  )
+
+  // R3 (step budget per user message): the limit N counts provider turns since the latest user
+  // message. A message sent mid-run (steered in at the next turn, or queued until the run would
+  // otherwise stop) starts a fresh budget of N, however the first message was delivered.
+  // Kind: model / oracle. The same tiny loop model as R3, extended with one extra message.
+  test(
+    "R3 (budget): a new user message mid-run restarts the step budget",
+    async () => {
+      console.log("[property] R3 (budget) ran")
+      await fc.assert(
+        fc.asyncProperty(
+          stepLimit.chain((n) =>
+            fc.record({
+              n: fc.constant(n),
+              steps: fc.array(modelStep, { minLength: 2 * n, maxLength: 2 * n }),
+              first: delivery,
+              second: fc.record({ at: fc.integer({ min: 1, max: n }), delivery }),
+            }),
+          ),
+          async (input) => {
+            const result = await runAgent(input.n, input.steps, { first: input.first, second: input.second })
+            const expected = expectedTurns(input.n, input.steps, input.second)
+
+            expect(result.requests).toHaveLength(expected.length)
+            result.requests.forEach((request, i) => {
+              if (expected[i]?.final) {
+                expect(request.toolChoice).toMatchObject({ type: "none" })
+                expect(request.tools).toEqual([])
+                expect(lastMessageText(request)).toContain("MAXIMUM STEPS REACHED")
+              } else {
+                expect(request.toolChoice).toBeUndefined()
+                expect(request.tools.length).toBeGreaterThan(0)
+                expect(lastMessageText(request)).not.toContain("MAXIMUM STEPS REACHED")
+              }
+            })
+            const expectedExecutions = expected.flatMap((turn, i) =>
+              Array.from({ length: turn.calls }, (_, c) => `step${i + 1}-call${c}`),
+            )
+            expect([...result.executions].sort()).toEqual([...expectedExecutions].sort())
+          },
+        ),
+        { numRuns: 30 },
+      )
+    },
+    120_000,
+  )
+
+  // R2 (runner side): an agent whose file was rejected "can't be selected and doesn't run with
+  // any limit". A session bound to an agent that never loaded must run as if unlimited: no plan
+  // instruction, tools on every request, no max-steps prompt, stopping only when the model does.
+  // Kind: model / oracle (the unlimited loop).
+  test(
+    "R2 (runner): a session whose agent was not loaded runs with no step limit",
+    async () => {
+      console.log("[property] R2 (runner) ran")
+      await fc.assert(
+        fc.asyncProperty(script, async (steps) => {
+          const result = await runAgent(undefined, steps, { agent: "rejected-agent" })
+          // With no limit the run stops at the first text-only reply, or after the script runs
+          // out (the fake model then returns an empty reply).
+          const firstText = steps.findIndex((s) => s.kind === "text") + 1
+          expect(result.requests).toHaveLength(firstText === 0 ? steps.length + 1 : firstText)
+          result.requests.forEach((request) => {
+            expect(request.toolChoice).toBeUndefined()
+            expect(request.tools.length).toBeGreaterThan(0)
+            expect(lastMessageText(request)).not.toContain("MAXIMUM STEPS REACHED")
+            expect(systemText(request)).not.toContain(PLAN_PHRASE)
+          })
+        }),
+        { numRuns: 15 },
       )
     },
     120_000,

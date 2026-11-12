@@ -19,6 +19,8 @@ import { ConfigMigrateV1 } from "@opencode-ai/core/v1/config/migrate"
 import { tmpdir } from "../fixture/tmpdir"
 import { agentHost, host } from "../plugin/host"
 
+fc.configureGlobal({ seed: 42 })
+
 // ---------- Shared setup ----------
 
 // Same services the existing agent config tests use (test/config/agent.test.ts).
@@ -43,7 +45,7 @@ function loadJsonc(text: string) {
   return new Config.Document({ type: "document", info })
 }
 
-type JsoncStyle = { shape: "v1" | "v2"; comment: boolean; trailingComma: boolean }
+type JsoncStyle = { shape: "v1" | "v1-mode" | "v2"; schema: boolean; comment: boolean; trailingComma: boolean }
 
 // Writes the given Markdown agent files into <tmp>/agents/ (tmp plays the role of the project's
 // .opencode directory), loads them plus optional opencode.jsonc text through the real
@@ -121,30 +123,49 @@ const validSteps = fc.oneof(fc.integer({ min: 1, max: 10 }), fc.integer({ min: 1
 //  - "legacy-max":   the deprecated maxSteps key, which only the legacy path maps to steps
 const markdownStyle = fc.constantFrom("native", "legacy-extra", "legacy-max")
 
-// How opencode.jsonc writes the limit. "v1" uses the documented `"agent": {...}` key, which
-// Config detects as the V1 format and migrates; "v2" uses `"agents": {...}` directly.
-// Comments and trailing commas are legal JSONC, so we sometimes add them.
+// How opencode.jsonc writes the limit. "v1" uses the documented `"agent": {...}` key and
+// "v1-mode" the older `"mode": {...}` key; Config detects both as the V1 format and migrates.
+// "v2" uses `"agents": {...}` directly. A `$schema` line (which editors add) sits next to the
+// agent key in real files. Comments and trailing commas are legal JSONC, so we sometimes add them.
 const jsoncStyle: fc.Arbitrary<JsoncStyle> = fc.record({
-  shape: fc.constantFrom("v1" as const, "v2" as const),
+  shape: fc.constantFrom("v1" as const, "v1-mode" as const, "v2" as const),
+  schema: fc.boolean(),
   comment: fc.boolean(),
   trailingComma: fc.boolean(),
 })
 
-function markdownFile(stepsYaml: string, style: string) {
-  const front =
-    style === "native"
-      ? `steps: ${stepsYaml}`
-      : style === "legacy-extra"
-        ? `steps: ${stepsYaml}\ntemperature: 0.5`
-        : `maxSteps: ${stepsYaml}`
-  return `---\ndescription: Reads the chain files\n${front}\n---\nRead the chain files in order.`
+// Other frontmatter a real agent file may or may not carry next to the limit. The description
+// line is optional in practice, and a file can have more than one mistake at once.
+const markdownExtras = fc.record({ description: fc.boolean(), invalidMode: fc.boolean() })
+type MarkdownExtras = { description: boolean; invalidMode: boolean }
+
+// stepsYaml undefined writes no limit at all (the file only configures other fields).
+function markdownFile(
+  stepsYaml: string | undefined,
+  style: string,
+  extras: MarkdownExtras = { description: true, invalidMode: false },
+) {
+  const limit =
+    stepsYaml === undefined ? [] : [style === "legacy-max" ? `maxSteps: ${stepsYaml}` : `steps: ${stepsYaml}`]
+  const front = [
+    ...(extras.description ? ["description: Reads the chain files"] : []),
+    // An invalid mode written before the limit, so an error report that stops at the first
+    // problem would never get to steps.
+    ...(extras.invalidMode ? ["mode: sometimes"] : []),
+    ...limit,
+    ...(style === "legacy-extra" ? ["temperature: 0.5"] : []),
+  ]
+  return `---\n${front.join("\n")}\n---\nRead the chain files in order.`
 }
 
-function jsoncFile(steps: number, style: JsoncStyle) {
-  const key = style.shape === "v1" ? "agent" : "agents"
-  const comment = style.comment ? "  // step limit for agent b\n" : ""
+// steps undefined writes no limit at all (the jsonc only configures other fields of the agent).
+function jsoncFile(steps: number | undefined, style: JsoncStyle, agent = "b") {
+  const key = style.shape === "v1" ? "agent" : style.shape === "v1-mode" ? "mode" : "agents"
+  const schema = style.schema ? `  "$schema": "https://opencode.ai/config.json",\n` : ""
+  const comment = style.comment ? "      // step limit\n" : ""
   const comma = style.trailingComma ? "," : ""
-  return `{\n  "${key}": {\n    "b": {\n      "description": "Reads the chain files",\n${comment}      "steps": ${steps}${comma}\n    }${comma}\n  }${comma}\n}`
+  const limit = steps === undefined ? "" : `,\n${comment}      "steps": ${steps}`
+  return `{\n${schema}  "${key}": {\n    "${agent}": {\n      "description": "Reads the chain files"${limit}${comma}\n    }${comma}\n  }${comma}\n}`
 }
 
 const decodeAgent = Schema.decodeUnknownSync(ConfigAgent.Info)
@@ -179,9 +200,9 @@ describe("agent steps config properties", () => {
     async () => {
       console.log("[property] R2 (markdown) ran")
       await fc.assert(
-        fc.asyncProperty(invalidYamlSteps, markdownStyle, async (stepsYaml, style) => {
+        fc.asyncProperty(invalidYamlSteps, markdownStyle, markdownExtras, async (stepsYaml, style, extras) => {
           const { agents, logs } = await loadAgents({
-            bad: markdownFile(stepsYaml, style),
+            bad: markdownFile(stepsYaml, style, extras),
             good: markdownFile("3", "native"),
           })
           expect(agents.bad).toBeUndefined()
@@ -204,13 +225,50 @@ describe("agent steps config properties", () => {
     async () => {
       console.log("[property] R4 ran")
       await fc.assert(
-        fc.asyncProperty(validSteps, markdownStyle, jsoncStyle, async (steps, md, jsonc) => {
-          const { agents } = await loadAgents({ a: markdownFile(String(steps), md) }, jsoncFile(steps, jsonc))
-          // Equal to each other (the requirement) and equal to N, so "both undefined"
-          // (both silently dropped) can't pass by accident.
-          expect(agents.a?.steps).toBe(agents.b?.steps)
-          expect(agents.a?.steps).toBe(steps)
-        }),
+        fc.asyncProperty(
+          validSteps,
+          markdownStyle,
+          fc.boolean(),
+          jsoncStyle,
+          async (steps, md, description, jsonc) => {
+            const { agents } = await loadAgents(
+              { a: markdownFile(String(steps), md, { description, invalidMode: false }) },
+              jsoncFile(steps, jsonc),
+            )
+            // Equal to each other (the requirement) and equal to N, so "both undefined"
+            // (both silently dropped) can't pass by accident.
+            expect(agents.a?.steps).toBe(agents.b?.steps)
+            expect(agents.a?.steps).toBe(steps)
+          },
+        ),
+        { numRuns: 50 },
+      )
+    },
+    60_000,
+  )
+
+  // R4 (one source sets it): the limit is the same whichever source sets it, even when the
+  // other source also configures the same agent without a limit. Configuring an agent's other
+  // fields in a second place must not erase (or invent) its step limit.
+  // Kind: metamorphic. Swapping which source carries `steps` leaves agent.steps at N.
+  test(
+    "R4 (one source sets it): a limit set in one source survives the other source configuring the same agent",
+    async () => {
+      console.log("[property] R4 (one source) ran")
+      await fc.assert(
+        fc.asyncProperty(
+          validSteps,
+          fc.constantFrom("markdown", "jsonc"),
+          markdownStyle,
+          jsoncStyle,
+          async (steps, source, md, jsonc) => {
+            const { agents } = await loadAgents(
+              { a: markdownFile(source === "markdown" ? String(steps) : undefined, md) },
+              jsoncFile(source === "jsonc" ? steps : undefined, jsonc, "a"),
+            )
+            expect(agents.a?.steps).toBe(steps)
+          },
+        ),
         { numRuns: 50 },
       )
     },
