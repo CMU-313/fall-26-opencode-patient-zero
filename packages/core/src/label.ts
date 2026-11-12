@@ -1,6 +1,6 @@
 export * as Label from "./label"
 
-import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
 import { Label } from "@opencode-ai/schema/label"
 import { Database } from "./database/database"
@@ -148,22 +148,23 @@ const layer = Layer.effect(
       parentID: string | null
       exclude?: string
     }) {
-      const existing = yield* db
-        .select({ id: LabelTable.id })
+      const siblings = yield* db
+        .select({ name: LabelTable.name })
         .from(LabelTable)
         .where(
           and(
             input.parentID === null ? isNull(LabelTable.parent_id) : eq(LabelTable.parent_id, input.parentID),
-            // Fold case with SQLite's lower() on both sides, exactly like label_parent_name_unique_idx.
-            // JavaScript's toLowerCase() also folds non-ASCII letters, so mixing the two let an exact
-            // duplicate like "Ünïcode" past this check and into a unique-index crash.
-            sql`lower(${LabelTable.name}) = lower(${input.name})`,
             input.exclude ? ne(LabelTable.id, input.exclude) : undefined,
           ),
         )
-        .get()
+        .all()
         .pipe(Effect.orDie)
-      if (existing) return yield* new DuplicateNameError({ name: input.name })
+      // Compare in JavaScript rather than with SQLite's lower(), which only folds ASCII letters:
+      // with lower(), "É" vs "é" slipped past this check, and an exact non-ASCII duplicate hit the
+      // database's unique index and crashed instead of returning DuplicateNameError.
+      const folded = input.name.toLowerCase()
+      if (siblings.some((sibling) => sibling.name.toLowerCase() === folded))
+        return yield* new DuplicateNameError({ name: input.name })
     })
 
     /** Collects a label and every label nested beneath it, breadth first. */
