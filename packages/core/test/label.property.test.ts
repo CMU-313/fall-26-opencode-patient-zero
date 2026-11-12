@@ -112,40 +112,50 @@ describe("Label properties", () => {
         names: siblingNames(2, 2),
         // 0 children covers moving a leaf label; 1–3 covers moving a label that carries a subtree.
         childNames: siblingNames(0, 3),
+        // Whether A starts as a top-level label (no parent) or already nested, since giving a top-level label its
+        // first parent is the case most likely to be confused with building a display path like "B/A".
+        topLevel: fc.boolean(),
       }),
       (input) =>
         Effect.gen(function* () {
           const labels = yield* Label.Service
           const root = yield* createRoot
-          const a = yield* labels.create({ name: input.names[0], parentID: root.id })
-          const b = yield* labels.create({ name: input.names[1], parentID: root.id })
-          const children = yield* Effect.forEach(input.childNames, (name) => labels.create({ name, parentID: a.id }))
-          // A third parent that already has a child named like A (differing only by case), so moving A there is
-          // rejected as a duplicate and A must be left exactly as it was.
-          const taken = yield* labels.create({ name: `taken-${crypto.randomUUID()}`, parentID: root.id })
-          const lower = a.name.toLowerCase()
-          yield* labels.create({ name: lower.length <= Label.MAX_NAME_LENGTH ? lower : a.name, parentID: taken.id })
-          const rejected = yield* labels.update(a.id, { parentID: taken.id }).pipe(Effect.flip)
-          expect(rejected).toMatchObject({ _tag: "Label.DuplicateNameError", name: a.name })
-          expect(yield* labels.get(a.id)).toEqual(a)
+          const a = yield* labels.create(
+            input.topLevel ? { name: input.names[0] } : { name: input.names[0], parentID: root.id },
+          )
+          // A top-level A shares one namespace with every other run, so it is always removed at the end, even when
+          // an assertion fails; otherwise it would collide with the next run's A and mask the real failure.
+          yield* Effect.gen(function* () {
+            expect(a.parentID).toBe(input.topLevel ? undefined : root.id)
+            const b = yield* labels.create({ name: input.names[1], parentID: root.id })
+            const children = yield* Effect.forEach(input.childNames, (name) => labels.create({ name, parentID: a.id }))
+            // A third parent that already has a child named like A (differing only by case), so moving A there is
+            // rejected as a duplicate and A must be left exactly as it was.
+            const taken = yield* labels.create({ name: `taken-${crypto.randomUUID()}`, parentID: root.id })
+            const lower = a.name.toLowerCase()
+            yield* labels.create({ name: lower.length <= Label.MAX_NAME_LENGTH ? lower : a.name, parentID: taken.id })
+            const rejected = yield* labels.update(a.id, { parentID: taken.id }).pipe(Effect.flip)
+            expect(rejected).toMatchObject({ _tag: "Label.DuplicateNameError", name: a.name })
+            expect(yield* labels.get(a.id)).toEqual(a)
 
-          const moved = yield* labels.update(a.id, { parentID: b.id })
+            const moved = yield* labels.update(a.id, { parentID: b.id })
 
-          expect(a.name).toBe(input.names[0].trim())
-          expect(moved.name).toBe(a.name)
-          expect(moved.parentID).toBe(b.id)
-          // Nothing else about A changes either; its creation time is kept.
-          expect(a.time.created).toBeNumber()
-          expect(moved.time.created).toBe(a.time.created)
-          // Adding A to the parent it already has is a no-op: A is not rewritten, so even its update time stays.
-          // The short sleep makes a rewrite visible, since update times have millisecond resolution.
-          yield* Effect.promise(() => Bun.sleep(2))
-          expect(yield* labels.update(a.id, { parentID: b.id })).toEqual(moved)
-          expect(yield* labels.get(a.id)).toEqual(moved)
-          expect((yield* labels.get(a.id)).name).toBe(a.name)
-          // Compared by ID because SQLite and JavaScript can order unicode names differently.
-          const byID = (list: ReadonlyArray<Label.Info>) => [...list].sort((x, y) => x.id.localeCompare(y.id))
-          expect(byID(yield* labels.list({ parentID: a.id }))).toEqual(byID(children))
+            expect(a.name).toBe(input.names[0].trim())
+            expect(moved.name).toBe(a.name)
+            expect(moved.parentID).toBe(b.id)
+            // Nothing else about A changes either; its creation time is kept.
+            expect(a.time.created).toBeNumber()
+            expect(moved.time.created).toBe(a.time.created)
+            // Adding A to the parent it already has is a no-op: A is not rewritten, so even its update time stays.
+            // The short sleep makes a rewrite visible, since update times have millisecond resolution.
+            yield* Effect.promise(() => Bun.sleep(2))
+            expect(yield* labels.update(a.id, { parentID: b.id })).toEqual(moved)
+            expect(yield* labels.get(a.id)).toEqual(moved)
+            expect((yield* labels.get(a.id)).name).toBe(a.name)
+            // Compared by ID because SQLite and JavaScript can order unicode names differently.
+            const byID = (list: ReadonlyArray<Label.Info>) => [...list].sort((x, y) => x.id.localeCompare(y.id))
+            expect(byID(yield* labels.list({ parentID: a.id }))).toEqual(byID(children))
+          }).pipe(Effect.ensuring(labels.remove(a.id).pipe(Effect.ignore)))
         }),
     ),
   )
@@ -209,6 +219,7 @@ describe("Label properties", () => {
       (input) =>
         Effect.gen(function* () {
           const labels = yield* Label.Service
+          const { db } = yield* Database.Service
           const root = yield* createRoot
           const [a, b, ...extras] = yield* Effect.forEach(input.names, (name) =>
             labels.create({ name, parentID: root.id }),
@@ -220,10 +231,20 @@ describe("Label properties", () => {
           const parentTagged = yield* createSessions(input.parentConversations)
           yield* Effect.forEach(parentTagged, (sessionID) => labels.assign({ sessionID, labelID: b.id }))
           const sessions = [...tagged, ...parentTagged]
+          // Each conversation's labels and its stored row (title, timestamps, ...), so the move cannot change
+          // either the conversation's labels or the conversation itself.
           const snapshot = Effect.forEach(sessions, (sessionID) =>
-            labels
-              .forSession(sessionID)
-              .pipe(Effect.map((assigned) => assigned.map((label) => [label.id, label.name]))),
+            Effect.gen(function* () {
+              return {
+                labels: (yield* labels.forSession(sessionID)).map((label) => [label.id, label.name]),
+                session: yield* db
+                  .select()
+                  .from(SessionTable)
+                  .where(eq(SessionTable.id, sessionID))
+                  .get()
+                  .pipe(Effect.orDie),
+              }
+            }),
           )
           const before = yield* snapshot
 
@@ -234,13 +255,13 @@ describe("Label properties", () => {
           expect(
             after
               .slice(0, tagged.length)
-              .flat()
+              .flatMap((conversation) => conversation.labels)
               .some(([id]) => id === b.id),
           ).toBe(false)
           expect(
             after
               .slice(tagged.length)
-              .flat()
+              .flatMap((conversation) => conversation.labels)
               .some(([id]) => id === a.id),
           ).toBe(false)
         }),
@@ -274,6 +295,8 @@ describe("Label properties", () => {
         Effect.gen(function* () {
           const labels = yield* Label.Service
           const { db } = yield* Database.Service
+          // An unrelated label every conversation also carries; deleting the other label must leave it in place.
+          const kept = yield* createRoot
           const before = yield* labels.list()
           const invalid = yield* labels.create({ name: input.invalidName }).pipe(Effect.flip)
           expect(invalid).toMatchObject({ _tag: "Label.InvalidNameError", name: input.invalidName })
@@ -291,7 +314,9 @@ describe("Label properties", () => {
             labels.create({ name, parentID: label.id }),
           )
           const sessions = yield* createSessions(input.conversations)
-          yield* Effect.forEach(sessions, (sessionID) => labels.assign({ sessionID, labelID: label.id }))
+          yield* Effect.forEach(sessions, (sessionID) =>
+            Effect.forEach([label, kept], (assigned) => labels.assign({ sessionID, labelID: assigned.id })),
+          )
 
           const removed = yield* labels.remove(label.id)
 
@@ -318,7 +343,8 @@ describe("Label properties", () => {
                 .get()
                 .pipe(Effect.orDie)
               expect(session?.id).toBe(sessionID)
-              expect(yield* labels.forSession(sessionID)).toEqual([])
+              // Only the deleted label is removed from the conversation; its unrelated label stays.
+              expect((yield* labels.forSession(sessionID)).map((assigned) => assigned.id)).toEqual([kept.id])
             }),
           )
         }),

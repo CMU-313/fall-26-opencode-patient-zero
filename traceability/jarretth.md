@@ -117,9 +117,17 @@ expect(after.slice(tagged.length).flat().some(([id]) => id === a.id)).toBe(false
 
 ### Evidence that it kills the mutant
 
-
 | R2 version | Result with H2 |
 |---|---|
 | Original| Passed: `1 pass, 0 fail`. The mutant survives. |
 | Strengthened | Failed: `Property failed after 3 tests`, shrunk counterexample `{"names":["Coursework","Work"],"conversations":1,"parentConversations":1}`, at `expect(after).toEqual(before)` because B's conversation gained label A. |
 
+## Red team
+
+Credit to Takeshi Koey (tkoey) for sending the red team attack.
+
+| ID | Mutant | Description | Result | Fix |
+|---|---|---|---|---|
+| H6 | Moving a label preserves its name | This mutant confuses a display path with the stored name: moving a top-level Databases label under Coursework saves Coursework/Databases | Survived | **R1 generator:** Every label was created under a per-run root, so A was never top-level and the mutated branch never ran. A `topLevel` boolean now sometimes creates A with no parent. |
+| H7 | Moving a label leaves its conversations unchanged | This mutant gives conversations carrying the moved label a new time_updated timestamp even though only the label hierarchy changed. | Survived | **R2, assertion:** The snapshot only compared each conversation's labels. It now also includes the conversation's stored row, so any change to the conversation itself is caught. |
+| H8 | Deleting a label preserves its conversations, apart from removing that label | This mutant scopes assignment cleanup to affected sessions instead of deleted labels: deleting School also removes Urgent from a conversation tagged with both. | Survived | **R3, generator:** Conversations were only ever tagged with the deleted label. Each one now also carries an unrelated label that is not deleted, and after the delete `forSession` must only return label. |
