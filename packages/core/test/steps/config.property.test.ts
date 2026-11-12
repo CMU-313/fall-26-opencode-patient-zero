@@ -170,6 +170,15 @@ function jsoncFile(steps: number | undefined, style: JsoncStyle, agent = "b") {
 
 const decodeAgent = Schema.decodeUnknownSync(ConfigAgent.Info)
 
+// Writes a generated JS value as the YAML scalar a user would type, keeping its type: NaN and
+// the infinities use YAML's own spellings, and strings are JSON-quoted so "3" stays a string.
+function toYamlScalar(value: unknown) {
+  if (typeof value === "number" && Number.isNaN(value)) return ".nan"
+  if (value === Number.POSITIVE_INFINITY) return ".inf"
+  if (value === Number.NEGATIVE_INFINITY) return "-.inf"
+  return JSON.stringify(value)
+}
+
 describe("agent steps config properties", () => {
   // R2: OpenCode rejects a steps value that is not a positive whole number and shows an
   // error naming the field, instead of loading the agent.
@@ -209,6 +218,32 @@ describe("agent steps config properties", () => {
           expect(agents.good?.steps).toBe(3)
           const field = style === "legacy-max" ? "maxSteps" : "steps"
           expect(logs.some((line) => line.includes("bad") && line.includes(field))).toBe(true)
+        }),
+        { numRuns: 40 },
+      )
+    },
+    60_000,
+  )
+
+  // R2: OpenCode rejects a steps value that is not a positive whole number and shows an
+  // error naming the field, instead of loading the agent.
+  // Kind: invariant. Draws from the full invalidSteps generator (0/negatives, fractions, NaN,
+  // +/-Infinity, arbitrary strings, null, booleans), writes each value into a real agent .md file
+  // as a YAML scalar, and loads it through ConfigAgentPlugin: the agent must be absent, a warning
+  // must name both the agent and the steps field, and a valid sibling agent must still load.
+  test(
+    "claude: R2 rejects non-positive-integer steps",
+    async () => {
+      console.log("[property] claude: R2 ran")
+      await fc.assert(
+        fc.asyncProperty(invalidSteps, async (steps) => {
+          const { agents, logs } = await loadAgents({
+            bad: markdownFile(toYamlScalar(steps), "native"),
+            good: markdownFile("3", "native"),
+          })
+          expect(agents.bad).toBeUndefined()
+          expect(agents.good?.steps).toBe(3)
+          expect(logs.some((line) => line.includes("bad") && line.includes("steps"))).toBe(true)
         }),
         { numRuns: 40 },
       )
