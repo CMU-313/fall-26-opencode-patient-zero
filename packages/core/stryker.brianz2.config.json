@@ -1,0 +1,9 @@
+{
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test test/label.property.test.ts"
+  },
+  "mutate": ["src/label.ts:151-163", "src/label.ts:291-325"],
+  "coverageAnalysis": "off",
+  "reporters": ["html", "clear-text", "progress"]
+}
