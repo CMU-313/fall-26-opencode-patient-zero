@@ -102,6 +102,23 @@ const invalidSteps = fc.oneof(
   fc.constantFrom(null, true, false),
 )
 
+// A window of whole numbers [-below, 1 + above] around the valid/invalid boundary, plus the same
+// numbers shifted by a fraction (2.5-style values). invalidSteps alone never reaches the boundary:
+// its fc.integer({ max: 0 }) spans [-2^31, 0] and under seed 42 only draws huge negatives, and its
+// doubles are tiny or huge, never a fraction between small whole numbers. The window always
+// contains 0 and 1 whatever below/above are drawn, so an off-by-one bound (>= 0 instead of > 0)
+// or a missing integer check is exercised in every run, not only when the seed happens to hit it.
+const boundaryWindow = fc
+  .record({
+    below: fc.nat({ max: 5 }),
+    above: fc.nat({ max: 5 }),
+    hundredths: fc.integer({ min: 1, max: 99 }),
+  })
+  .map((window) => {
+    const wholes = Array.from({ length: window.below + window.above + 2 }, (_, i) => i - window.below)
+    return [...wholes, ...wholes.map((whole) => whole + window.hundredths / 100)]
+  })
+
 // The same invalid families, written as YAML frontmatter scalars (what a user types in an
 // agent .md file). Strings are double-quoted so "3" stays a string, not the number 3.
 const invalidYamlSteps = fc.oneof(
@@ -227,23 +244,32 @@ describe("agent steps config properties", () => {
 
   // R2: OpenCode rejects a steps value that is not a positive whole number and shows an
   // error naming the field, instead of loading the agent.
-  // Kind: invariant. Draws from the full invalidSteps generator (0/negatives, fractions, NaN,
-  // +/-Infinity, arbitrary strings, null, booleans), writes each value into a real agent .md file
-  // as a YAML scalar, and loads it through ConfigAgentPlugin: the agent must be absent, a warning
-  // must name both the agent and the steps field, and a valid sibling agent must still load.
+  // Kind: invariant. Each run writes one agent .md file per value: one from the full invalidSteps
+  // generator (negatives, fractions, NaN, +/-Infinity, arbitrary strings, null, booleans) and one
+  // for every value in a boundaryWindow (whole numbers straddling 0/1 and the same numbers plus a
+  // fraction), and loads them all through ConfigAgentPlugin. The oracle checks both sides of the
+  // boundary: a whole number >= 1 loads with exactly that limit; every other value is not loaded
+  // and a warning names that agent (quoted, so "w1" can't match "w10") and the steps field.
   test(
     "claude: R2 rejects non-positive-integer steps",
     async () => {
       console.log("[property] claude: R2 ran")
       await fc.assert(
-        fc.asyncProperty(invalidSteps, async (steps) => {
-          const { agents, logs } = await loadAgents({
-            bad: markdownFile(toYamlScalar(steps), "native"),
-            good: markdownFile("3", "native"),
-          })
-          expect(agents.bad).toBeUndefined()
-          expect(agents.good?.steps).toBe(3)
-          expect(logs.some((line) => line.includes("bad") && line.includes("steps"))).toBe(true)
+        fc.asyncProperty(invalidSteps, boundaryWindow, async (steps, window) => {
+          const values = Object.fromEntries([["bad", steps], ...window.map((value, i) => [`w${i}`, value])])
+          const { agents, logs } = await loadAgents(
+            Object.fromEntries(
+              Object.entries(values).map(([name, value]) => [name, markdownFile(toYamlScalar(value), "native")]),
+            ),
+          )
+          for (const [name, value] of Object.entries(values)) {
+            if (typeof value === "number" && Number.isInteger(value) && value >= 1) {
+              expect(agents[name]?.steps).toBe(value)
+              continue
+            }
+            expect(agents[name]).toBeUndefined()
+            expect(logs.some((line) => line.includes(`"${name}"`) && line.includes("steps"))).toBe(true)
+          }
         }),
         { numRuns: 40 },
       )

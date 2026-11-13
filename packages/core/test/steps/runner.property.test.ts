@@ -327,6 +327,12 @@ const script = fc.array(modelStep, { minLength: 8, maxLength: 8 })
 
 // The phrase the R5 plan instruction must contain (see src/session/runner/max-steps.ts).
 const PLAN_PHRASE = "numbered plan"
+// What R5 requires the plan instruction to say: plan BEFORE the first tool call, and do not wait
+// for the user's approval (C-13, C-14). Red team mutants 2 and 3 removed each of these.
+const PLAN_DEMANDS = [/before your first tool call/i, /do not wait for the user to approve/i]
+// What R3 requires the final-step instruction to demand: a summary of work done AND of work
+// remaining (C-9, S-15). Red team mutant 1 dropped the remaining-work demand.
+const SUMMARY_DEMANDS = [/summary of what has been accomplished/i, /remaining tasks that were not completed/i]
 
 const delivery = fc.constantFrom<Delivery>("steer", "queue")
 
@@ -391,6 +397,7 @@ describe("agent steps runner properties", () => {
               expect(request.toolChoice).toMatchObject({ type: "none" })
               expect(request.tools).toEqual([])
               expect(lastMessageText(request)).toContain("MAXIMUM STEPS REACHED")
+              SUMMARY_DEMANDS.forEach((demand) => expect(lastMessageText(request)).toMatch(demand))
             } else {
               expect(request.toolChoice).toBeUndefined()
               expect(request.tools.length).toBeGreaterThan(0)
@@ -442,6 +449,7 @@ describe("agent steps runner properties", () => {
                 expect(request.toolChoice).toMatchObject({ type: "none" })
                 expect(request.tools).toEqual([])
                 expect(lastMessageText(request)).toContain("MAXIMUM STEPS REACHED")
+                SUMMARY_DEMANDS.forEach((demand) => expect(lastMessageText(request)).toMatch(demand))
               } else {
                 expect(request.toolChoice).toBeUndefined()
                 expect(request.tools.length).toBeGreaterThan(0)
@@ -514,6 +522,8 @@ describe("agent steps runner properties", () => {
             .filter((text) => !(unlimited.requests[0]?.system ?? []).some((part) => part.text === text))
           expect(added).toHaveLength(1)
           expect(added[0]).toContain(PLAN_PHRASE)
+          // ...and it asks for the plan up front and says to proceed without approval.
+          PLAN_DEMANDS.forEach((demand) => expect(added[0]).toMatch(demand))
         }),
         { numRuns: 15 },
       )
