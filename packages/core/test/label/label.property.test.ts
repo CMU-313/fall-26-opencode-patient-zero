@@ -34,10 +34,8 @@ const word = fc.oneof(
 const labelPool = fc.uniqueArray(word, {
   minLength: 1,
   maxLength: 6,
-  // Top-level names are unique case-insensitively, so the pool must be too.
   selector: (name) => name.toLowerCase(),
 })
-/** A pool of label names, which of them the session starts with, and one label to pick. */
 const sessionLabels = labelPool.chain((names) =>
   fc.record({
     names: fc.constant(names),
@@ -45,7 +43,6 @@ const sessionLabels = labelPool.chain((names) =>
     pick: fc.nat({ max: names.length - 1 }),
   }),
 )
-/** A sequence of label adds and removes; `pick` chooses a label from the pool by index. */
 const steps = (minLength: number) =>
   fc.array(fc.record({ add: fc.boolean(), pick: fc.nat() }), { minLength, maxLength: 20 })
 /** Leading and trailing whitespace a user might type: spaces, tabs, or nothing at all. */
@@ -74,7 +71,6 @@ describe("session label properties", () => {
                 const other = yield* insertSession(`ses_prop_${runs++}`, 1)
                 yield* Effect.forEach(setup.ids, (labelID) => labels.assign({ sessionID: other, labelID }))
                 const otherBefore = yield* labelIDs(labels, other)
-                // Only a label the session doesn't have counts for this half of R2.
                 const fresh = setup.ids.find((_, index) => !input.initial.includes(index))
                 if (!fresh) return
                 const before = yield* labelIDs(labels, setup.session)
@@ -234,7 +230,6 @@ describe("session label properties", () => {
   )
 })
 
-/** Creates a fresh session plus one top-level label per name. */
 function createSetup(labels: Label.Interface, names: ReadonlyArray<string>, updated = 1) {
   return Effect.gen(function* () {
     const session = yield* insertSession(`ses_prop_${runs++}`, updated)
@@ -243,10 +238,6 @@ function createSetup(labels: Label.Interface, names: ReadonlyArray<string>, upda
   })
 }
 
-/**
- * Inserts a session row directly, since core has no session service. Labels only need the
- * row to exist, and writing it directly lets R5 choose the session's time.
- */
 function insertSession(id: string, updated: number) {
   return Effect.gen(function* () {
     const database = yield* Database.Service
@@ -280,7 +271,6 @@ function labelIDs(labels: Label.Interface, sessionID: SessionSchema.ID) {
   return labels.forSession(sessionID).pipe(Effect.map((list) => list.map((label) => label.id)))
 }
 
-/** Deletes every label so the next property run starts empty. Sessions use fresh IDs each run. */
 function cleanup(labels: Label.Interface) {
   return labels
     .list({ parentID: null })

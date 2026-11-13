@@ -118,7 +118,6 @@ test("R2 (strengthened): the round trip on one session leaves every other sessio
           const { db } = yield* Database.Service
           const labels = yield* Label.Service
           const otherID = SessionSchema.ID.make("ses_r2_other")
-          // runScenario resets every table, so create the other session after it, holding every label.
           const base = yield* runScenario(scenario)
           yield* db
             .insert(SessionTable)

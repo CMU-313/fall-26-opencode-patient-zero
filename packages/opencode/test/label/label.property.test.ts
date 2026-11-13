@@ -19,7 +19,6 @@ const it = testEffect(
   ]),
 )
 
-// Same fixed seed as the core property file, so hand-written mutant results are reproducible.
 fc.configureGlobal({ seed: 42 })
 
 afterEach(async () => {
@@ -158,11 +157,6 @@ describe("session label filter properties", () => {
   )
 })
 
-/**
- * Creates the pool labels and one session per generated entry, assigns each session its labels,
- * and sets its time directly in the database so R6 controls the order. Everything is deleted
- * when the scope closes, so the next property run starts empty.
- */
 function buildWorld(sessions: ReadonlyArray<{ updated: number; labels: ReadonlyArray<string> }>) {
   return Effect.gen(function* () {
     const labels = yield* Label.Service
