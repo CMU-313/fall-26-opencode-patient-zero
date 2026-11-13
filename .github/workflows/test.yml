@@ -71,7 +71,7 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: packages/core
         timeout-minutes: 5
-        run: bun test test/label/label.property.test.ts
+        run: bun test test/label/label.property.test.ts test/label/opencode-r2.property.test.ts
 
       - name: Run session label property tests (opencode)
         if: ${{ !cancelled() }}
