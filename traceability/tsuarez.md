@@ -101,3 +101,44 @@ After strengthening, all five hand-written mutants (H1-H5) are killed.
 | Before strengthening (Stryker) | 36 | 50 | 72.00% |
 | After strengthening, as Stryker reports it | 37 | 50 | **74.00%** |
 | After strengthening, equivalent mutants excluded | 37 | 46 | **80.43%** |
+
+## Agent failure case
+
+**Property:** opencode wrote "R2: adding a missing label then removing it restores the session's labels" in `packages/core/test/label/opencode-r2.property.test.ts` (the first test in that file, unchanged from opencode's output). I asked it to write a property for R2 without reading my existing property tests.
+
+**opencode transcript excerpt:**
+
+**Prompt:** Write a fast-check property for this requirement: "R2: Adding a label the session doesn't already have and then removing it leaves the session's labels exactly as they were before." Test Label.Service (assign, unassign, forSession) in packages/core/src/label.ts. Do not read or copy anything in packages/core/test/label/ or packages/opencode/test/label/. Put it in packages/core/yesy/label/opencode-r2.property.test.ts.
+
+
+**Response:** 
+1 pass
+0 fail
+180 expect() calls
+Ran 1 test across 1 file. [1.89s]
+$ cd packages/core && bun typecheck
+$ tsgo --noEmit
++ Thought: 754ms
+Created packages/core/yesy/label/opencode-r2.property.test.ts.
+The property generates 1–8 unique labels plus an initial assignment subset, picks an unassigned label, then verifies assign adds it and unassign restores forSession exactly. Test passes with 60 runs; typecheck is clean.
+
+
+**Share link:** TODO: paste the link from `/share`
+
+**Mutant it let survive:** H2. In `label.ts`, `unassign` filters only by label ID and drops the session ID condition, so removing a label from one session removes it from every session. With H2 applied, opencode's property passes (1 pass, 0 fail).
+
+**Why the property was too weak:** The generator never reaches the bug. Every scenario creates exactly one session (`ses_r2`), and the property only compares that session's labels before and after the round trip. With a single session, "remove this label from this session" and "remove this label from every session" leave the database in the same state, so H2 is indistinguishable from correct code. The assertions themselves are sound (the session's labels must match exactly), but nothing in the input ever puts the same label on a second session.
+
+**Strengthened version:** The second test in the same file, "R2 (strengthened): the round trip on one session leaves every other session's labels alone". It reuses opencode's generator and setup, then adds a second session (`ses_r2_other`) holding every label before the round trip, and asserts that its labels are unchanged afterwards in addition to opencode's original check.
+
+**Evidence that it kills the mutant** (`git apply mutants/tsuarez/H2.patch`, then `bun test test/label/opencode-r2.property.test.ts` in `packages/core`):
+
+```
+(pass) R2: adding a missing label then removing it restores the session's labels
+Counterexample: [{"names":["a"],"assigned":[false],"pick":0}]
+(fail) R2 (strengthened): the round trip on one session leaves every other session's labels alone
+ 1 pass
+ 1 fail
+```
+
+Without the mutant, both tests pass (2 pass, 0 fail). The shrunk counterexample shows the smallest case: one label "a" that the session doesn't have. After adding and removing it, H2 also strips "a" from the second session.
