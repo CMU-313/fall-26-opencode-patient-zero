@@ -48,7 +48,7 @@ Stryker version: 10.1.1.
 
 Command: `bunx --no-install stryker run stryker.brianz2.config.json` from `packages/core`.
 
-Test scope: `test/label.property.test.ts`.
+Test scope: `test/label.brianz2.property.test.ts`.
 
 Mutation scope: `src/label.ts:151-163` and `src/label.ts:291-325`.
 
@@ -137,5 +137,5 @@ it("supports multiple independent labels per session", async () => {
 
 Failed to kill mutant H1.
 
-The property was too weak because it only created one session in the test and unassigned a label, but unassigning from one session is the same as unsassigning from all sessions in this case, so it didn't catch that bug. My strengthened version is at `packages/core/test/label.property.test.ts:166` and creates three sessions, so it catches that mutant. From running the tests, it kills mutant H1.
+The property was too weak because it only created one session in the test and unassigned a label, but unassigning from one session is the same as unsassigning from all sessions in this case, so it didn't catch that bug. My strengthened version is at `packages/core/test/label.brianz2.property.test.ts:166` and creates three sessions, so it catches that mutant. From running the tests, it kills mutant H1.
 
