@@ -169,7 +169,7 @@ Per-requirement Stryker IDs (_Mutants it kills_ column) come from four extra run
 
 ### Transcript excerpt
 
-Full transcript: [`mutants/ccao2/agent-transcript.txt`](https://claude.ai/mutants/ccao2/agent-transcript.txt).
+Full transcript: `mutants/ccao2/agent-transcript.txt`.
 
 **Prompt:**
 
