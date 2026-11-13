@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 0c2c4a6..26e8ff4 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -308,7 +308,7 @@ const layer = Layer.effect(
+     const unassign = Effect.fn("Label.unassign")(function* (input: AssignInput) {
+       yield* db
+         .delete(SessionLabelTable)
+-        .where(and(eq(SessionLabelTable.session_id, input.sessionID), eq(SessionLabelTable.label_id, input.labelID)))
++        .where(eq(SessionLabelTable.session_id, input.sessionID))
+         .run()
+         .pipe(Effect.orDie)
+     })
