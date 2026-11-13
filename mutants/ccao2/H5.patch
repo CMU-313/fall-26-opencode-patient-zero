@@ -1,0 +1,12 @@
+diff --git a/packages/core/src/v1/config/migrate.ts b/packages/core/src/v1/config/migrate.ts
+index ebe1b90..2ad5a12 100644
+--- a/packages/core/src/v1/config/migrate.ts
++++ b/packages/core/src/v1/config/migrate.ts
+@@ -118,7 +118,6 @@ export function migrateAgent(info: ConfigAgentV1.Info) {
+     mode: info.mode,
+     hidden: info.hidden,
+     color: info.color,
+-    steps: info.steps,
+     disabled: info.disable,
+     permissions: permissions(info.permission),
+   }

@@ -35,7 +35,7 @@ import { type RunError, Service } from "./index"
 import { SessionRunnerModel } from "./model"
 import { createLLMEventPublisher } from "./publish-llm-event"
 import { toLLMMessages } from "./to-llm-message"
-import { MAX_STEPS_PROMPT } from "./max-steps"
+import { MAX_STEPS_PROMPT, stepPlanPrompt } from "./max-steps"
 import { Snapshot } from "../../snapshot"
 import { makeLocationNode } from "../../effect/app-node"
 import { llmClient } from "../../effect/app-node-platform"
@@ -205,7 +205,11 @@ const layer = Layer.effect(
       const request = LLM.request({
         model,
         providerOptions: { openai: { promptCacheKey } },
-        system: [agent.info?.system, system.baseline]
+        system: [
+          agent.info?.system,
+          agent.info?.steps !== undefined ? stepPlanPrompt(agent.info.steps) : undefined,
+          system.baseline,
+        ]
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
         messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],

@@ -105,7 +105,9 @@ function defer<T>() {
 
 const waitFor = <A>(check: Effect.Effect<A | undefined>, message: string) =>
   Effect.gen(function* () {
-    const stop = Date.now() + 500
+    // Generous deadline: CI runs several packages' suites in parallel on 4 vCPUs, and 500ms was flaky there.
+    // Passing checks return as soon as the value appears, so this only lengthens genuine failures.
+    const stop = Date.now() + 5000
     while (Date.now() < stop) {
       const value = yield* check
       if (value !== undefined) return value

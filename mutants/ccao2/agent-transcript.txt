@@ -1,0 +1,32 @@
+❯ Write a fast-check property test for this requirement:                        
+  "OpenCode rejects a steps value that is not a positive whole number and shows 
+  an error naming the field, instead of loading the agent."                     
+                                                                                
+  The relevant code is in packages/core/src/config/plugin/agent.ts. Add it as a 
+  new test named "claude: R2 rejects non-positive-integer steps" in             
+  packages/core/test/steps/config.property.test.ts. Keep the existing           
+  fc.configureGlobal({ seed: 42 }). Run it and make sure it passes.             
+
+● The test "claude: R2 rejects non-positive-integer steps" is in
+  packages/core/test/steps/config.property.test.ts:234, and it passes. 
+  All 5 tests in the file pass, and bun 
+  typecheck is clean. I didn't change fc.configureGlobal({ seed: 42 }).
+
+  What the test does:
+  - Inputs: it uses the file's existing invalidSteps generator: 0 and negative
+    numbers, fractions, NaN, ±Infinity, any string (including "five", "3" and
+    ""), null, and booleans.
+  - How it loads them: a small helper, toYamlScalar, writes each value into an
+    agent .md file the way a user would type it. NaN and the infinities use
+    YAML's own spellings (.nan, .inf), and strings are quoted so "3" stays text
+    instead of becoming a number. The file is then loaded through the real
+    ConfigAgentPlugin next to a valid agent with steps: 3.
+  - Checks, over 40 runs:
+    - the invalid agent isn't loaded;
+    - a warning is logged that names both the agent and the steps field;
+    - the valid agent still loads with steps === 3, so one bad file doesn't stop
+      the others loading.
+
+  It sits next to the existing R2 tests: the schema-only test, and the Markdown
+  test, which uses YAML values written by hand. The new test covers more invalid
+  values than the Markdown test.

@@ -20,7 +20,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "yarn install",
+	"postCreateCommand": "bun install && bun add -d @stryker-mutator/core",
 
 	// Configure tool-specific properties.
 	// "customizations": {},

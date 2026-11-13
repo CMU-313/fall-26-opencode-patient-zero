@@ -1,0 +1,12 @@
+diff --git a/packages/core/src/config/plugin/agent.ts b/packages/core/src/config/plugin/agent.ts
+index 3be6296..037f8cf 100644
+--- a/packages/core/src/config/plugin/agent.ts
++++ b/packages/core/src/config/plugin/agent.ts
+@@ -195,6 +195,6 @@ function invalidReason(input: unknown, legacy: boolean) {
+     else Schema.decodeUnknownSync(ConfigAgent.Info)(input, { errors: "all" })
+     return "unknown error"
+   } catch (error) {
+-    return String(error)
++    return "invalid agent configuration"
+   }
+ }

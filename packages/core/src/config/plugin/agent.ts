@@ -57,7 +57,15 @@ export const Plugin = define({
             const files = yield* discover(fs, entry.path)
             return yield* Effect.forEach(files, (file) =>
               fs.readFileStringSafe(file.filepath).pipe(
-                Effect.map((content) => content && decode(file, content)),
+                Effect.flatMap((content) => {
+                  if (!content) return Effect.succeed(undefined)
+                  const result = decode(file, content)
+                  // R2: an invalid agent file is skipped, but the user is told why instead of
+                  // the agent silently disappearing.
+                  return result?.warning
+                    ? Effect.logWarning(result.warning).pipe(Effect.as(result.document))
+                    : Effect.succeed(result?.document)
+                }),
                 Effect.catch(() => Effect.succeed(undefined)),
               ),
             ).pipe(
@@ -150,7 +158,10 @@ function discover(fs: FSUtil.Interface, directory: string) {
   )
 }
 
-function decode(file: { directory: string; filepath: string; primary: boolean }, content: string) {
+function decode(
+  file: { directory: string; filepath: string; primary: boolean },
+  content: string,
+): { document?: Config.Document; warning?: string } | undefined {
   const markdown = ConfigMarkdown.parseOption(content)
   if (!markdown) return
   const name = path
@@ -160,20 +171,30 @@ function decode(file: { directory: string; filepath: string; primary: boolean },
     .replace(/\.md$/, "")
   const body = markdown.content.trim()
   const legacy = Object.keys(markdown.data).some((key) => !agentKeys.has(key))
+  const options = { errors: "all", propertyOrder: "original" } as const
+  const input = legacy ? { name, ...markdown.data, prompt: body } : { ...markdown.data, system: body }
   const agent = Option.getOrUndefined(
     legacy
-      ? Option.map(
-          decodeLegacyAgent({ name, ...markdown.data, prompt: body }, { errors: "all", propertyOrder: "original" }),
-          ConfigMigrateV1.migrateAgent,
-        )
-      : decodeAgent({ ...markdown.data, system: body }, { errors: "all", propertyOrder: "original" }),
+      ? Option.map(decodeLegacyAgent(input, options), ConfigMigrateV1.migrateAgent)
+      : decodeAgent(input, options),
   )
-  if (!agent) return
+  if (!agent) return { warning: `Skipping invalid agent "${name}" (${file.filepath}): ${invalidReason(input, legacy)}` }
   const info = Option.getOrUndefined(
     decodeConfig({
       agents: { [name]: file.primary ? { ...agent, mode: "primary" } : agent },
     }),
   )
   if (!info) return
-  return new Config.Document({ type: "document", path: file.filepath, info })
+  return { document: new Config.Document({ type: "document", path: file.filepath, info }) }
+}
+
+// Re-runs the failed decode to get the schema's error text, which names the bad field (e.g. steps).
+function invalidReason(input: unknown, legacy: boolean) {
+  try {
+    if (legacy) Schema.decodeUnknownSync(ConfigAgentV1.Info)(input, { errors: "all" })
+    else Schema.decodeUnknownSync(ConfigAgent.Info)(input, { errors: "all" })
+    return "unknown error"
+  } catch (error) {
+    return String(error)
+  }
 }

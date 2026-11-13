@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test test/steps/runner.property.test.ts test/steps/config.property.test.ts"
+  },
+  "mutate": [
+    "src/session/runner/llm.ts:186-218",
+    "src/session/runner/llm.ts:245-252",
+    "src/session/runner/llm.ts:387-410",
+    "src/session/runner/max-steps.ts:1-21",
+    "src/config/plugin/agent.ts:46-125",
+    "src/config/plugin/agent.ts:148-200",
+    "src/v1/config/migrate.ts:30-33",
+    "src/v1/config/migrate.ts:97-125"
+  ],
+  "coverageAnalysis": "off",
+  "inPlace": true,
+  "concurrency": 4,
+  "timeoutMS": 30000,
+  "reporters": [
+    "html",
+    "clear-text",
+    "progress"
+  ],
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  }
+}
