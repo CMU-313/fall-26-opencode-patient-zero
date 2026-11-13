@@ -79,6 +79,11 @@ jobs:
         timeout-minutes: 5
         run: bun test --timeout 30000 test/label/label.property.test.ts
 
+      - name: Run Brian's Label Service property tests
+        working-directory: packages/core
+        timeout-minutes: 5
+        run: bun test test/label.brianz2.property.test.ts
+
       - name: Check generated client
         timeout-minutes: 5
         working-directory: packages/client

@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 0c2c4a6..d3ce6e4 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -154,7 +154,7 @@ const layer = Layer.effect(
+         .where(
+           and(
+             input.parentID === null ? isNull(LabelTable.parent_id) : eq(LabelTable.parent_id, input.parentID),
+-            sql`lower(${LabelTable.name}) = ${input.name.toLowerCase()}`,
++            sql`lower(${LabelTable.name}) = ${input.name}`,
+             input.exclude ? ne(LabelTable.id, input.exclude) : undefined,
+           ),
+         )
