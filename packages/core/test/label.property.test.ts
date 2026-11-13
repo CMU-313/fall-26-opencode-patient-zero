@@ -18,7 +18,7 @@ const it = testEffect(AppNodeBuilder.build(LayerNode.group([Database.node, Label
 // Generators use short non-empty lowercase names for valid labels, uniqueArray to force multiple-label cases,
 // bounded operation sequences over three sessions and four labels for repeated assignments and removals, and
 // exact or uppercase variants to exercise duplicate-name boundaries.
-const propertyOptions = { numRuns: 50 }
+const propertyOptions = { numRuns: 50, seed: 42 }
 const labelName = array(constantFrom(...Array.from("abcdefghijklmnopqrstuvwxyz")), {
   minLength: 1,
   maxLength: 8,
@@ -128,6 +128,14 @@ describe("Label properties", () => {
             const beforeSessionIDs = await Effect.runPromise(
               db.select({ id: SessionTable.id }).from(SessionTable).all(),
             )
+            const missingSessionID = SessionSchema.ID.make(`ses_r2_missing_${currentRun}`)
+            const missingSessionError = await Effect.runPromise(
+              Effect.flip(labels.assign({ sessionID: missingSessionID, labelID: created[0]!.id })),
+            )
+            expect(missingSessionError).toMatchObject({
+              _tag: "Label.SessionNotFoundError",
+              sessionID: missingSessionID,
+            })
 
             await Effect.runPromise(Effect.all(created.map((label) => labels.assign({ sessionID, labelID: label.id }))))
             await Effect.runPromise(Effect.all(created.map((label) => labels.assign({ sessionID, labelID: label.id }))))
@@ -231,6 +239,24 @@ describe("Label properties", () => {
             )
 
             expect(failures).toEqual(attempts.map(() => "Label.DuplicateNameError"))
+            const parent = await Effect.runPromise(
+              labels.create({ name: scopedName("r7_parent", currentRun, 0, "parent") }),
+            )
+            const nestedName = scopedName("r7_nested", currentRun, 0, baseName)
+            await Effect.runPromise(labels.create({ name: nestedName, parentID: parent.id }))
+            const nestedFailures = await Effect.runPromise(
+              Effect.all(
+                attempts.map((uppercase) =>
+                  failureTag(
+                    labels.create({
+                      name: uppercase ? nestedName.toUpperCase() : nestedName.toLowerCase(),
+                      parentID: parent.id,
+                    }),
+                  ),
+                ),
+              ),
+            )
+            expect(nestedFailures).toEqual(attempts.map(() => "Label.DuplicateNameError"))
             const matches = (await Effect.runPromise(labels.list())).filter(
               (label) => label.name.toLowerCase() === name.toLowerCase(),
             )
