@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": { "command": "bun test test/label/label.property.test.ts" },
+  "mutate": [
+    "src/label.ts:120-128",
+    "src/label.ts:146-168",
+    "src/label.ts:187-200",
+    "src/label.ts:295-330"
+  ],
+  "coverageAnalysis": "off",
+  "inPlace": true,
+  "concurrency": 4,
+  "timeoutMS": 30000,
+  "reporters": ["html", "clear-text", "progress"],
+  "htmlReporter": { "fileName": "reports/mutation/mutation.html" }
+}
