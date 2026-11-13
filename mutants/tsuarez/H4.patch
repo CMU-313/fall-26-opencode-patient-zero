@@ -1,0 +1,18 @@
+diff --git a/packages/opencode/src/session/session.ts b/packages/opencode/src/session/session.ts
+index 9693033..5f48cdd 100644
+--- a/packages/opencode/src/session/session.ts
++++ b/packages/opencode/src/session/session.ts
+@@ -553,11 +553,11 @@ const layer: Layer.Layer<
+     const list = Effect.fn("Session.list")(function* (input?: ListInput) {
+       const ctx = yield* InstanceState.context
+       const labelIDs = input?.label === undefined ? undefined : yield* labels.resolvePath(input.label)
+-      if (labelIDs?.length === 0) return []
+       return yield* listByProject(db, {
+         projectID: ctx.project.id,
+         experimentalWorkspaces: flags.experimentalWorkspaces,
+-        labelIDs,
++        // An empty list would produce an empty IN (), so treat "no matching labels" as no filter.
++        labelIDs: labelIDs?.length ? labelIDs : undefined,
+         ...input,
+       })
+     })

@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 60bf295..17988e5 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -223,7 +223,7 @@ const layer = Layer.effect(
+     const update = Effect.fn("Label.update")(function* (id: ID, input: UpdateInput) {
+       const current = yield* requireRow(id)
+       const name = input.name === undefined ? current.name : yield* normalizeName(input.name)
+-      const parentID = input.parentID === undefined ? current.parent_id : input.parentID
++      const parentID = input.parentID ?? null
+ 
+       if (parentID !== null) {
+         // A label cannot become its own ancestor: walk up from the new parent and make sure we never reach `id`.
