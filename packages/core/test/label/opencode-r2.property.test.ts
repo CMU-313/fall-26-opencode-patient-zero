@@ -103,7 +103,7 @@ test("R2: adding a missing label then removing it restores the session's labels"
   )
 })
 
-// Strengthened version of the opencode property above (written by me, not opencode).
+// Strengthened version of the opencode property above (written with Claude Code, not opencode).
 // R2: Adding a label the session doesn't already have and then removing it leaves the
 // session's labels exactly as they were before.
 // Kind: round-trip

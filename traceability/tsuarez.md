@@ -30,6 +30,8 @@ Properties written or suggested by opencode or another AI tool: R2, R3, R4, R5, 
 
 Each mutant is a patch in `mutants/tsuarez/`. To run one: `git apply mutants/tsuarez/H1.patch`, run `bun test test/label/label.property.test.ts` in `packages/core` and `packages/opencode`, then `git apply -R mutants/tsuarez/H1.patch`. Predictions were written before any mutant was run.
 
+**AI assistance.** Claude Code assisted in improving the mutants after I made attempts.
+
 | ID | Requirement targeted | Change | Predicted killer | Actual result |
 |---|---|---|---|---|
 | H1 | R2 | `label.ts`: `assign` drops `.onConflictDoNothing()`, so adding a label the session already has hits the primary key and crashes instead of being a no-op | "Adding a label the session already has changes nothing" (R2 invariant) and "any sequence of adds and removes matches a simple set model" (R2 model / oracle) | Killed by both predicted R2 properties. Shrunk counterexample: one label "work" added twice. Also killed by R5 and by R6 (metamorphic), because their generators add labels a session may already have. |
@@ -41,7 +43,9 @@ Each mutant is a patch in `mutants/tsuarez/`. To run one: `git apply mutants/tsu
 All five predictions matched. H2 and H4 point to gaps in the generators: R2 needs a second session sharing the label, and R4 needs a filter name that no label has.
 ## Stryker comparison
 
-**Setup.** Config: `packages/core/stryker.tsuarez.config.json`. It runs only `bun test test/label/label.property.test.ts` (the R2, R3, and R5 properties) and mutates only the functions those properties call in `packages/core/src/label.ts`: `normalizeName` (lines 120-128), `ensureUniqueName` (146-168), `create` (187-200), and `assign`, `unassign`, `forSession` (295-330). It uses `inPlace: true` because the tests import `@opencode-ai/core/label`, which resolves to the real source file rather than a sandbox copy. The fast-check seed is fixed at **42** (`fc.configureGlobal({ seed: 42 })`), and two runs gave identical results. Report: `mutants/tsuarez/mutation.html`.
+**Setup.** `packages/core/stryker.tsuarez.config.json` runs only my core property file (R2, R3, R5) and mutates only the `label.ts` functions those properties call: `normalizeName`, `ensureUniqueName`, `create`, `assign`, `unassign`, and `forSession`. It uses `inPlace: true` because the tests import the real source file, not a sandbox copy. The fast-check seed is fixed at **42**, two runs gave identical results, and the report is in `mutants/tsuarez/mutation.html`.
+
+**AI Disclosure:** Claude drafted the answers below from the Stryker report. I reviewed the survivors and the answers.
 
 R4 and R6 are tested in `packages/opencode`, where Stryker is not installed, so the session-list filter code they cover is not part of this run.
 
@@ -65,17 +69,17 @@ R4 and R6 are tested in `packages/opencode`, where Stryker is not installed, so 
 | 320 | `Effect.fn("Label.forSession")` → `Effect.fn("")` | Tracing span name only |
 
 **Which of my hand-written mutants did Stryker never generate, and why?**
-None of them. H1 removes the `.onConflictDoNothing()` call from a query chain, and Stryker has no mutator that deletes a call from a method chain. H2 removes one argument from an `and(...)` call, and Stryker does not drop function arguments. H3 changes `trim()` to `trimEnd()`. Stryker's closest mutant on that line removes the `trim()` call entirely (`name.trim()` → `name`), which the R3 property killed, but it never produced the subtler `trimEnd()` variant. H4 is in `packages/opencode/src/session/session.ts`, which is outside Stryker's scope here, and it rewrites two statements together. H5 adds a whole new database update, and Stryker only changes or removes existing code; it never adds new behavior. Each hand-written mutant needed knowledge of what the feature is supposed to do, while Stryker's operators are small syntactic edits applied one location at a time.
+None of them. Stryker doesn't delete calls from a method chain (H1), drop function arguments (H2), swap `trim()` for `trimEnd()` (H3; it only removed `trim()` entirely, which R3 killed), or add new code (H5), and H4 is in `session.ts`, outside its scope. Each hand-written mutant needed knowledge of what the feature should do, while Stryker makes small syntactic edits one location at a time.
 
 **Which Stryker survivors would I never have thought of? Are any of them plausible real bugs?**
-I would not have thought of the line 156 survivor. It shows that the R3 property only ever creates nested labels, so the top-level branch of the duplicate check is never exercised. It is also a very plausible bug: writing `eq(LabelTable.parent_id, input.parentID)` without special-casing `null` is an easy mistake, because SQL's `= NULL` never matches. Removing the missing-parent and missing-session checks (lines 190 and 303) are also plausible, since the database's foreign keys still stop bad rows, so a developer might think the checks are redundant; the user would then see a crash instead of a clear error. The empty-error-payload mutants (122, 125, 303) and the span-name mutants (187, 295, 312, 320) are not bugs a developer would write on purpose, and the span-name ones are equivalent.
+I would not have thought of line 156, which showed that R3 only tested nested labels, never top-level ones. It is a very plausible bug, since forgetting to special-case `null` is easy and SQL's `= NULL` never matches. Removing the missing-parent and missing-session checks (190, 303) is also plausible because foreign keys still block bad rows, while the empty-error and span-name mutants are not bugs anyone would write.
 
 **What does each approach find that the other doesn't?**
-The hand-written mutants found gaps in what my properties look at: H2 showed that the R2 properties never check other sessions, and H4 showed that the R4 generator never filters by a name that matches no label. Stryker can't find those, because no single-token edit produces those bugs. Stryker found gaps in which code paths the generators reach: the top-level duplicate branch (156), and the validation and not-found branches (122, 123, 190, 303). Those branches handle cases none of R1-R6 mention, so they also point to missing requirements: what should happen for an empty name, a name over 64 characters, a missing parent, or a missing session. Hand-written mutants test whether the properties check the right behavior; Stryker tests whether the generators reach every branch.
+Hand-written mutants found gaps in what my properties check: R2 never looked at other sessions (H2), and R4 never filtered by a name with no label (H4). Stryker found code paths my generators never reach: top-level duplicates (156) and the validation and not-found branches (122, 123, 190, 303). Those branches cover cases no requirement mentions, so Stryker also exposed missing requirements, which no single-token hand edit would have shown.
 
 ## Strengthening
 
-All changes are to properties and generators; no example-based tests were added. The seed stays at 42.
+All changes are to properties and generators; no example-based tests were added. The seed stays at 42. Claude Code wrote the property and generator changes and the equivalent-mutant arguments, and I reviewed each change against its requirement.
 
 | Survivor | Change to the property | Result |
 |---|---|---|
@@ -123,13 +127,13 @@ Created packages/core/yesy/label/opencode-r2.property.test.ts.
 The property generates 1–8 unique labels plus an initial assignment subset, picks an unassigned label, then verifies assign adds it and unassign restores forSession exactly. Test passes with 60 runs; typecheck is clean.
 
 
-**Share link:** TODO: paste the link from `/share`
+**Share link:** https://opncd.ai/share/0ksujzEx
 
 **Mutant it let survive:** H2. In `label.ts`, `unassign` filters only by label ID and drops the session ID condition, so removing a label from one session removes it from every session. With H2 applied, opencode's property passes (1 pass, 0 fail).
 
 **Why the property was too weak:** The generator never reaches the bug. Every scenario creates exactly one session (`ses_r2`), and the property only compares that session's labels before and after the round trip. With a single session, "remove this label from this session" and "remove this label from every session" leave the database in the same state, so H2 is indistinguishable from correct code. The assertions themselves are sound (the session's labels must match exactly), but nothing in the input ever puts the same label on a second session.
 
-**Strengthened version:** The second test in the same file, "R2 (strengthened): the round trip on one session leaves every other session's labels alone". It reuses opencode's generator and setup, then adds a second session (`ses_r2_other`) holding every label before the round trip, and asserts that its labels are unchanged afterwards in addition to opencode's original check.
+**Strengthened version:** The second test in the same file, "R2 (strengthened): the round trip on one session leaves every other session's labels alone". It was written with Claude Code, not opencode, and I reviewed it against R2. It reuses opencode's generator and setup, then adds a second session (`ses_r2_other`) holding every label before the round trip, and asserts that its labels are unchanged afterwards in addition to opencode's original check.
 
 **Evidence that it kills the mutant** (`git apply mutants/tsuarez/H2.patch`, then `bun test test/label/opencode-r2.property.test.ts` in `packages/core`):
 
