@@ -1,0 +1,13 @@
+diff --git a/packages/core/src/label.ts b/packages/core/src/label.ts
+index 0c2c4a6..00bdef9 100644
+--- a/packages/core/src/label.ts
++++ b/packages/core/src/label.ts
+@@ -165,7 +165,7 @@ const layer = Layer.effect(
+ 
+     /** Collects a label and every label nested beneath it, breadth first. */
+     const subtree = Effect.fnUntraced(function* (id: string) {
+-      const ids = [id]
++      const ids: string[] = []
+       let frontier = [id]
+       while (frontier.length) {
+         const children = yield* db
