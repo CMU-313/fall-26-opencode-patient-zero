@@ -5,10 +5,10 @@
       "resolved": "ghcr.io/devcontainers-extra/features/bun@sha256:0624284ecaead9dd4c6654616a7f939cfa4ebcbc60593700a74e35b1767befa5",
       "integrity": "sha256:0624284ecaead9dd4c6654616a7f939cfa4ebcbc60593700a74e35b1767befa5"
     },
-    "ghcr.io/devcontainers/features/common-utils:1": {
-      "version": "1.2.0",
-      "resolved": "ghcr.io/devcontainers/features/common-utils@sha256:0b0b3e64a9ed55be10902c8845778727978ab234d3b3a19b42aac54101a9cec7",
-      "integrity": "sha256:0b0b3e64a9ed55be10902c8845778727978ab234d3b3a19b42aac54101a9cec7"
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "version": "2.7.2",
+      "resolved": "ghcr.io/devcontainers/features/common-utils@sha256:08e5a6ad4b672301c2010944217aeea4f428a87f4349d9bbf8bc97211238674b",
+      "integrity": "sha256:08e5a6ad4b672301c2010944217aeea4f428a87f4349d9bbf8bc97211238674b"
     }
   }
 }
